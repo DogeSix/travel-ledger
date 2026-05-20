@@ -767,22 +767,45 @@ function renderSettings() {
       <div class="card">
         <div class="card-title">資料備份與搬移</div>
         <div class="settings-list">
+
+          <div class="settings-item" onclick="showDataPreviewViewer('json')">
+            <div class="settings-item-left">
+              <div class="settings-icon-box" style="color: var(--accent); background-color: rgba(54,207,201,0.08);">📋</div>
+              <div>
+                <div class="settings-label">檢視 JSON 完整資料</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">直接在 App 內預覽所有旅程與記帳數據</div>
+              </div>
+            </div>
+            <span class="settings-value" style="color: var(--accent);">檢視 ❯</span>
+          </div>
+
+          <div class="settings-item" onclick="showDataPreviewViewer('csv')">
+            <div class="settings-item-left">
+              <div class="settings-icon-box" style="color: var(--secondary); background-color: rgba(255,192,105,0.08);">📊</div>
+              <div>
+                <div class="settings-label">檢視 CSV 消費報表</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">以精美表格預覽消費明細並即時搜尋</div>
+              </div>
+            </div>
+            <span class="settings-value" style="color: var(--secondary);">檢視 ❯</span>
+          </div>
+
           <div class="settings-item" onclick="exportTripJSON()">
             <div class="settings-item-left">
               <div class="settings-icon-box">📤</div>
               <div>
-                <div class="settings-label">匯出完整 JSON 備份</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">匯出所有旅程與記帳，可換手機還原</div>
+                <div class="settings-label">下載 JSON 備份檔</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">下載備份檔案，可換手機還原</div>
               </div>
             </div>
           </div>
 
           <div class="settings-item" onclick="exportTripCSV()">
             <div class="settings-item-left">
-              <div class="settings-icon-box">📊</div>
+              <div class="settings-icon-box">💾</div>
               <div>
-                <div class="settings-label">匯出 CSV 試算表</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">檢視精美報表並下載 CSV 檔案</div>
+                <div class="settings-label">下載 CSV 試算表</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">下載 Excel 相容的 CSV 試算表檔案</div>
               </div>
             </div>
           </div>
@@ -2155,9 +2178,198 @@ window.triggerFileDownload = function(fileType) {
   }
 };
 
+// 直接在 App 內預覽資料的全新檢視器
+function showDataPreviewViewer(type) {
+  if (type === 'csv') {
+    // CSV 模式：觸發互動式報表檢視器
+    const trip = getActiveTrip();
+    if (!trip) {
+      showToast('⚠️ 目前沒有使用中的旅程');
+      return;
+    }
+    
+    let csvContent = "\ufeff";
+    csvContent += "日期時間,消費類別,支付方式,項目描述,外幣金額,外幣幣別,台幣金額,付款人,分攤旅伴\n";
+    trip.transactions.forEach(t => {
+      const cat = CATEGORIES[t.category]?.name || '其他';
+      let payMethod = '現金';
+      if (t.paymentMethod === 'card') payMethod = '刷卡';
+      if (t.paymentMethod === 'split') payMethod = '多人拆帳';
+      const desc = t.desc.replace(/"/g, '""');
+      const companions = (t.splitWith || []).join(';');
+      csvContent += `"${t.date}","${cat}","${payMethod}","${desc}",${t.amountForeign},"${trip.foreignCurrency}",${t.amountBase},"${t.payer || '我'}","${companions}"\n`;
+    });
+    
+    showReportViewer(`${trip.name} 記帳明細`, csvContent, 'csv');
+    return;
+  }
+  
+  // JSON 模式：以精美的樹狀卡片方式呈現所有旅程與帳目資料
+  const overlay = document.getElementById('dialog-overlay');
+  if (!overlay) return;
+  
+  let tripsHtml = '';
+  
+  if (trips.length === 0) {
+    tripsHtml = `
+      <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+        <div style="font-size: 40px; margin-bottom: 12px;">📭</div>
+        <p>目前沒有任何旅程資料。</p>
+      </div>
+    `;
+  } else {
+    trips.forEach((trip, idx) => {
+      const isCurrent = trip.id === activeTripId;
+      const txCount = trip.transactions ? trip.transactions.length : 0;
+      const totalF = trip.transactions ? trip.transactions.reduce((a, t) => a + t.amountForeign, 0) : 0;
+      const totalB = trip.transactions ? trip.transactions.reduce((a, t) => a + t.amountBase, 0) : 0;
+      const companions = trip.companions || [];
+      const withdrawals = trip.cashWithdrawals || [];
+      
+      tripsHtml += `
+        <div class="data-preview-trip-card ${isCurrent ? 'current' : ''}">
+          <div class="data-preview-trip-header">
+            <span class="data-preview-trip-name">${isCurrent ? '🔸 ' : ''}${trip.name}</span>
+            ${isCurrent ? '<span class="data-preview-badge-current">使用中</span>' : ''}
+          </div>
+          <div class="data-preview-meta-grid">
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">幣別</span>
+              <span class="data-preview-meta-val">${trip.foreignCurrency} → ${trip.baseCurrency}</span>
+            </div>
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">匯率</span>
+              <span class="data-preview-meta-val">1:${trip.exchangeRate}</span>
+            </div>
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">預算</span>
+              <span class="data-preview-meta-val">NT$ ${(trip.budget || 0).toLocaleString()}</span>
+            </div>
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">旅伴</span>
+              <span class="data-preview-meta-val">${companions.length > 0 ? companions.join(', ') : '無'}</span>
+            </div>
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">日期</span>
+              <span class="data-preview-meta-val">${trip.startDate || '—'} ~ ${trip.endDate || '—'}</span>
+            </div>
+            <div class="data-preview-meta-item">
+              <span class="data-preview-meta-label">提領</span>
+              <span class="data-preview-meta-val">${withdrawals.length} 筆</span>
+            </div>
+          </div>
+          
+          <div class="data-preview-stats-row">
+            <div class="data-preview-stat">
+              <span class="data-preview-stat-num" style="color: var(--secondary);">${txCount}</span>
+              <span class="data-preview-stat-label">消費筆數</span>
+            </div>
+            <div class="data-preview-stat">
+              <span class="data-preview-stat-num">${Math.round(totalF).toLocaleString()} <small>${trip.foreignCurrency}</small></span>
+              <span class="data-preview-stat-label">外幣總支出</span>
+            </div>
+            <div class="data-preview-stat">
+              <span class="data-preview-stat-num" style="color: var(--accent);">NT$ ${Math.round(totalB).toLocaleString()}</span>
+              <span class="data-preview-stat-label">折合台幣</span>
+            </div>
+          </div>
+          
+          ${txCount > 0 ? `
+            <div class="data-preview-tx-list">
+              <div class="data-preview-tx-title">📝 消費紀錄明細 (${txCount} 筆)</div>
+              ${trip.transactions.map((t, tIdx) => {
+                const catInfo = CATEGORIES[t.category] || CATEGORIES.others;
+                let payStr = '💵 現金';
+                if (t.paymentMethod === 'card') payStr = '💳 刷卡';
+                if (t.paymentMethod === 'split') payStr = '👥 拆帳';
+                return `
+                  <div class="data-preview-tx-row">
+                    <span class="data-preview-tx-idx">${tIdx + 1}</span>
+                    <span class="data-preview-tx-icon">${catInfo.icon}</span>
+                    <div class="data-preview-tx-info">
+                      <div class="data-preview-tx-desc">${t.desc || '（無備註）'}</div>
+                      <div class="data-preview-tx-sub">${t.date} · ${payStr} · ${t.payer || '我'}付</div>
+                    </div>
+                    <div class="data-preview-tx-amt">
+                      <div>${t.amountForeign.toLocaleString()} ${trip.foreignCurrency}</div>
+                      <div style="font-size: 10px; color: var(--text-muted);">NT$ ${t.amountBase.toLocaleString()}</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 12px;">尚無消費記錄</div>
+          `}
+
+          ${withdrawals.length > 0 ? `
+            <div class="data-preview-tx-list" style="margin-top: 10px;">
+              <div class="data-preview-tx-title">💸 外幣提領紀錄 (${withdrawals.length} 筆)</div>
+              ${withdrawals.map((w, wIdx) => `
+                <div class="data-preview-tx-row">
+                  <span class="data-preview-tx-idx">${wIdx + 1}</span>
+                  <span class="data-preview-tx-icon">🏧</span>
+                  <div class="data-preview-tx-info">
+                    <div class="data-preview-tx-desc">提領外幣現金</div>
+                    <div class="data-preview-tx-sub">${w.date} · 匯率 ${w.rate}</div>
+                  </div>
+                  <div class="data-preview-tx-amt">
+                    <div style="color: var(--success);">+${w.amountForeign.toLocaleString()} ${trip.foreignCurrency}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    });
+  }
+  
+  overlay.innerHTML = `
+    <div class="dialog report-viewer-dialog" onclick="event.stopPropagation()" style="max-height: 90vh;">
+      <h3 class="dialog-title" style="font-size: 17px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <span>📋 完整資料檢視器</span>
+        <button onclick="closeDialog()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; padding: 4px;">&times;</button>
+      </h3>
+      <p class="dialog-desc" style="font-size: 11px; margin-bottom: 12px; line-height: 1.4; color: var(--text-muted);">
+        以下列出本裝置上所有旅程與記帳數據 (共 ${trips.length} 個旅程)。您可以直接在此檢視每筆消費的完整資訊。
+      </p>
+      
+      <div class="data-preview-scroll-area">
+        ${tripsHtml}
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+        <button class="btn-primary" onclick="exportTripJSON()" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--accent) 0%, #36cfc1 100%); color: var(--text-dark); border-radius: 12px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(54, 207, 201, 0.2);">
+          💾 下載 JSON 備份
+        </button>
+        <button class="btn-primary" onclick="exportTripCSV()" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--primary) 0%, #ff7a45 100%); color: white; border-radius: 12px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(255, 122, 69, 0.25);">
+          💾 下載 CSV 檔案
+        </button>
+      </div>
+      
+      <button class="btn-secondary" onclick="closeDialog()" style="width: 100%; height: 38px; margin-top: 8px; border-color: rgba(255,255,255,0.06); color: var(--text-muted); border-radius: 12px; font-size: 12px; font-weight: 600; cursor: pointer;">
+        ✕ 關閉檢視器
+      </button>
+    </div>
+  `;
+  
+  overlay.classList.add('active');
+}
+
 function exportTripJSON() {
   const content = JSON.stringify(trips, null, 2);
-  showReportViewer('匯出 JSON 旅程備份', content, 'json');
+  const dateStr = new Date().toISOString().split('T')[0];
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8;' });
+  const filename = `出國記帳備份_${dateStr}.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  showToast('💾 JSON 備份檔案已下載！');
 }
 
 function exportTripCSV() {
@@ -2179,7 +2391,17 @@ function exportTripCSV() {
     csvContent += `"${t.date}","${cat}","${payMethod}","${desc}",${t.amountForeign},"${trip.foreignCurrency}",${t.amountBase},"${t.payer || '我'}","${companions}"\n`;
   });
   
-  showReportViewer(`${trip.name} 記帳明細 (CSV)`, csvContent, 'csv');
+  const dateStr = new Date().toISOString().split('T')[0];
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const filename = `${trip.name}_記帳明細_${dateStr}.csv`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  showToast('💾 CSV 試算表已下載！');
 }
 
 function importTripJSON(event) {
@@ -2279,40 +2501,41 @@ function setupEventListeners() {
     });
   });
 
-  // Pointer Events high-performance clicks setup
+  // Custom Keypad: Full haptic vibration fix
+  // 重要修復說明：
+  // - 行動瀏覽器中，navigator.vibrate() 需要來自「合法使用者手勢」才能觸發
+  // - pointerdown + e.preventDefault() 會導致 Chrome Android 不將其視為合法手勢
+  // - 解決方案：使用 touchstart(passive:false) 做手機震動，click 做電腦端備援
+  //   同時使用 pointerdown(不呼叫 preventDefault) 做視覺回饋
   document.querySelectorAll('.keypad-btn').forEach(btn => {
     const val = btn.dataset.val;
-    let isPressed = false;
+    let hasTriggered = false; // 防止 touchstart 和 click 重複觸發
 
-    const pressStart = (e) => {
-      if (isPressed) return;
-      isPressed = true;
-      
-      // 1. Premium mechanical oscillator sound click (Immediate Web Audio click fallback for iOS/All devices)
+    // 核心處理函數
+    const handleKeyAction = () => {
+      // 1. 機械式音效 (所有裝置通用)
       playClickSound();
-      
-      // 2. Haptic vibration feedback (Android / Windows Chrome Mobile)
+
+      // 2. 物理震動回饋 (Android / 支援設備)
       if (isHapticVibrateEnabled && navigator.vibrate) {
         try {
           if (val === 'save') {
-            // Triple success pattern
             navigator.vibrate([40, 30, 20]);
           } else if (val === 'backspace' || val === 'C') {
-            // Double warning pattern
             navigator.vibrate([15, 20, 15]);
           } else {
-            // Single clean tactile feedback tick
             navigator.vibrate(12);
           }
         } catch (err) {
-          console.warn('Tactile vibration request failed:', err);
+          console.warn('Vibration failed:', err);
         }
       }
-      
-      // 3. Smooth tactile transition styling class
+
+      // 3. 視覺回饋
       btn.classList.add('active-flash');
-      
-      // 4. Input processing trigger
+      setTimeout(() => btn.classList.remove('active-flash'), 120);
+
+      // 4. 輸入邏輯
       if (val === 'save') {
         saveTransaction();
       } else {
@@ -2320,20 +2543,26 @@ function setupEventListeners() {
       }
     };
 
-    const pressEnd = (e) => {
-      if (!isPressed) return;
-      isPressed = false;
-      btn.classList.remove('active-flash');
-    };
+    // 方法 A：touchstart — 手機觸控的第一優先級（最快回應、合法手勢、可觸發震動）
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault(); // 防止 300ms 延遲和後續 click 事件
+      if (hasTriggered) return;
+      hasTriggered = true;
+      handleKeyAction();
+      // 短暫延遲後重設旗標，確保快速連續點擊也能正常觸發
+      setTimeout(() => { hasTriggered = false; }, 80);
+    }, { passive: false });
 
-    // Use Pointer Events for single-touch / multi-touch high responsive touch gestures (no 300ms delays, no focus theft)
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); // Prevents focus theft and default browser selection highlight
-      pressStart(e);
+    // 方法 B：click — 桌面端滑鼠點擊備援
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (hasTriggered) {
+        // 已被 touchstart 處理過了，跳過
+        hasTriggered = false;
+        return;
+      }
+      handleKeyAction();
     });
-    btn.addEventListener('pointerup', pressEnd);
-    btn.addEventListener('pointercancel', pressEnd);
-    btn.addEventListener('pointerleave', pressEnd);
   });
 }
 
