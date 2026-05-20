@@ -165,6 +165,24 @@ function renderApp() {
 function switchView(viewName) {
   activeView = viewName;
   
+  // Dynamic Header Back button controller for native app feeling
+  const backBtn = document.getElementById('btn-back');
+  const appTitle = document.getElementById('app-title');
+  if (backBtn) {
+    if (viewName === 'dashboard') {
+      backBtn.style.display = 'none';
+      if (appTitle) appTitle.style.display = 'block';
+    } else {
+      backBtn.style.display = 'flex';
+      // On small screens, hide "出國記帳" text to give space for back button if needed
+      if (appTitle && window.innerWidth < 360) {
+        appTitle.style.display = 'none';
+      } else if (appTitle) {
+        appTitle.style.display = 'block';
+      }
+    }
+  }
+  
   // Update view section visibility
   document.querySelectorAll('.view-section').forEach(el => {
     el.classList.remove('active');
@@ -754,6 +772,15 @@ function renderSettings() {
       </div>
     `;
   }
+
+  // Add Version 3.0 Elegant Footer badge in Traditional Chinese
+  html += `
+    <div style="text-align: center; margin-top: 30px; margin-bottom: 20px; padding: 10px; opacity: 0.7;">
+      <div style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--secondary);">v3.0 行動優化尊爵版 📱</div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">支援觸覺震動回饋 · 防凍結順暢滑動 · 原生操作導航</div>
+      <div style="font-size: 9px; color: var(--text-muted); margin-top: 6px; opacity: 0.5;">Antigravity Design Team © 2026</div>
+    </div>
+  `;
 
   settingsContainer.innerHTML = html;
 }
@@ -1756,14 +1783,34 @@ function setupEventListeners() {
 
   // Keypad clicks setup
   document.querySelectorAll('.keypad-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const val = e.currentTarget.dataset.val;
+    // Premium 120Hz Native Mobile feeling: bind touchstart and mousedown to completely eliminate 300ms delay,
+    // execute haptic vibrations, and dynamic visuals instantly
+    const handleKeypress = (e) => {
+      e.preventDefault(); // Stop secondary double-triggers between mousedown & touchstart
+      
+      // 1. Tactile haptic feedback (vibrate 15ms)
+      if (navigator.vibrate) {
+        navigator.vibrate(15);
+      }
+      
+      // 2. High-performance visual keypad-btn flash
+      const targetBtn = e.currentTarget;
+      targetBtn.classList.add('active-flash');
+      setTimeout(() => {
+        targetBtn.classList.remove('active-flash');
+      }, 100);
+      
+      // 3. Trigger logic
+      const val = targetBtn.dataset.val;
       if (val === 'save') {
         saveTransaction();
       } else {
         keypadTap(val);
       }
-    });
+    };
+    
+    btn.addEventListener('touchstart', handleKeypress, { passive: false });
+    btn.addEventListener('mousedown', handleKeypress);
   });
 }
 

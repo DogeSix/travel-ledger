@@ -23,7 +23,13 @@
     
     <!-- Header -->
     <header>
-      <h1>出國記帳 🧳</h1>
+      <div class="header-left">
+        <button class="btn-back-header" id="btn-back" onclick="switchView('dashboard')" style="display: none;" aria-label="返回首頁">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          返回
+        </button>
+        <h1 id="app-title">出國記帳 🧳</h1>
+      </div>
       <div class="header-actions">
         <div class="trip-badge" id="current-trip-badge" onclick="switchView('settings')">
           <!-- Active trip name will be injected here -->

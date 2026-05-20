@@ -34,8 +34,21 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent text selection only on non-textual interactive components for better native PWA touch feeling */
+button, 
+.nav-item, 
+.category-pill, 
+.keypad-btn, 
+.fab-btn, 
+.trip-badge, 
+.toggle-option,
+.drawer-close,
+.btn-back-header {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 html {
@@ -85,12 +98,46 @@ body {
 
 /* Header styling */
 header {
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 20px 10px 20px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 10px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background-color: var(--bg-color);
   z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-back-header {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 32px;
+}
+
+.btn-back-header svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
+.btn-back-header:active {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  transform: scale(0.95);
 }
 
 header h1 {
@@ -134,8 +181,9 @@ header h1 {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px 20px 100px 20px; /* Leave space for navigation */
+  padding: 10px 16px calc(88px + var(--safe-bottom)) 16px; /* Optimized padding for mobile layout */
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; /* Directs scroll gestures vertically, preventing freeze locks */
 }
 
 /* Hide scrollbars but keep scrolling working */
@@ -265,9 +313,9 @@ header h1 {
 .card {
   background-color: var(--panel-bg);
   border: 1px solid var(--border-color);
-  border-radius: 24px;
-  padding: 20px;
-  margin-bottom: 16px;
+  border-radius: 20px; /* Slightly tighter border radius */
+  padding: 16px 18px; /* Tighter padding for maximum screen real estate */
+  margin-bottom: 12px; /* Reduced margin to keep items visible without excessive scrolling */
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
@@ -422,8 +470,8 @@ header h1 {
 .detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px; /* Reduced gap */
+  margin-bottom: 12px; /* Reduced margin */
 }
 
 .detail-card {
@@ -742,6 +790,7 @@ header h1 {
   z-index: 30;
   opacity: 0;
   visibility: hidden;
+  pointer-events: none; /* Crucial: prevent blocking background scrolls when invisible */
   transition: opacity 0.3s ease, visibility 0.3s ease;
   cursor: pointer;
 }
@@ -749,6 +798,7 @@ header h1 {
 .drawer-overlay.active {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto; /* Allow clicks when active */
 }
 
 .drawer {
@@ -1051,13 +1101,15 @@ header h1 {
   font-size: 18px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all 0.08s ease;
 }
 
-.keypad-btn:active {
-  background-color: var(--primary);
-  transform: scale(0.95);
-  color: var(--text-dark);
+.keypad-btn:active,
+.keypad-btn.active-flash {
+  background-color: var(--secondary) !important;
+  transform: scale(0.92);
+  color: var(--text-dark) !important;
+  box-shadow: 0 0 12px rgba(255, 192, 105, 0.4);
 }
 
 .keypad-btn.action {
@@ -1065,9 +1117,11 @@ header h1 {
   color: var(--secondary);
 }
 
-.keypad-btn.action:active {
-  background-color: var(--secondary);
-  color: var(--text-dark);
+.keypad-btn.action:active,
+.keypad-btn.action.active-flash {
+  background-color: var(--primary) !important;
+  color: var(--text-dark) !important;
+  box-shadow: 0 0 12px rgba(255, 122, 69, 0.4);
 }
 
 .keypad-btn.confirm {
@@ -1078,9 +1132,12 @@ header h1 {
   border: none;
 }
 
-.keypad-btn.confirm:active {
-  opacity: 0.9;
-  transform: scale(0.96);
+.keypad-btn.confirm:active,
+.keypad-btn.confirm.active-flash {
+  background: var(--accent) !important;
+  color: var(--text-dark) !important;
+  transform: scale(0.94);
+  box-shadow: 0 0 12px rgba(54, 207, 201, 0.4);
 }
 
 /* Save Form Button */
@@ -1199,6 +1256,7 @@ header h1 {
   z-index: 40;
   opacity: 0;
   visibility: hidden;
+  pointer-events: none; /* Crucial: prevent blocking background scrolls when invisible */
   transition: opacity 0.25s ease, visibility 0.25s ease;
   display: flex;
   align-items: center;
@@ -1210,6 +1268,7 @@ header h1 {
 .dialog-overlay.active {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto; /* Allow clicks when active */
 }
 
 .dialog {
