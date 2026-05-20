@@ -117,6 +117,50 @@ function loadData() {
             desc: '藥妝店美妝藥品',
             payer: '我',
             splitWith: ['我']
+          },
+          {
+            id: 't4',
+            date: '2026-05-18 16:00',
+            amountForeign: 32000,
+            amountBase: 6880,
+            category: 'lodging',
+            paymentMethod: 'card',
+            desc: '新宿新宿歌舞伎町設計酒店',
+            payer: '我',
+            splitWith: ['我', '阿明', '小華']
+          },
+          {
+            id: 't5',
+            date: '2026-05-15 11:30',
+            amountForeign: 3000,
+            amountBase: 645,
+            category: 'transport',
+            paymentMethod: 'cash',
+            desc: 'Skyliner 京成電鐵特急',
+            payer: '小華',
+            splitWith: ['我', '阿明', '小華']
+          },
+          {
+            id: 't6',
+            date: '2026-05-19 19:30',
+            amountForeign: 15000,
+            amountBase: 3225,
+            category: 'food',
+            paymentMethod: 'split',
+            desc: '築地市場奢華壽司饗宴',
+            payer: '阿明',
+            splitWith: ['我', '阿明', '小華']
+          },
+          {
+            id: 't7',
+            date: '2026-05-20 16:20',
+            amountForeign: 8000,
+            amountBase: 1720,
+            category: 'souvenir',
+            paymentMethod: 'cash',
+            desc: '淺草雷門人形燒伴手禮',
+            payer: '我',
+            splitWith: ['我']
           }
         ],
         cashWithdrawals: [
@@ -1470,6 +1514,33 @@ function removeCompanion(name) {
   }
 }
 
+// Get local user identity for the trip
+function getMyIdentity(trip) {
+  if (!trip) return '我';
+  const savedIdentity = localStorage.getItem(`travel_trip_identity_${trip.id}`);
+  return savedIdentity || '我';
+}
+
+// Set local user identity for the trip
+function setMyIdentity(identity) {
+  const trip = getActiveTrip();
+  if (!trip) return;
+  localStorage.setItem(`travel_trip_identity_${trip.id}`, identity);
+  showToast(`👤 已將本機身份設為：${identity === '我' ? '我 (記帳發起人)' : identity}`);
+  renderApp();
+}
+
+// Get payer display name relative to my identity
+function getPayerDisplayName(payer, myIdentity) {
+  if (payer === myIdentity) {
+    return '我';
+  }
+  if (payer === '我') {
+    return '記帳發起人';
+  }
+  return payer;
+}
+
 // Netting Algorithm for Settlement - Fully protected from floating-point infinite loops
 function calculateSettlements(trip) {
   const companions = trip.companions || [];
@@ -1977,6 +2048,46 @@ function confirmDeleteTrip() {
     renderApp();
     showToast('🗑️ 旅程已成功刪除');
   }
+}
+
+function clearAllAppData() {
+  const firstConfirm = confirm("🚨 警告！你即將刪除此 APP 在這台裝置上的所有本機資料（包括所有旅程、所有消費明細與拆帳記錄）。\n此操作將不可逆！是否確認刪除？");
+  if (!firstConfirm) return;
+
+  const secondConfirm = confirm("⚠️ 請再次確認！這會徹底清空這台裝置的本機快取與所有設定。\n若您沒有下載備份，資料將會永久消失。確定真的要刪除全部本機資料嗎？");
+  if (!secondConfirm) return;
+
+  // Stop background sync polling if active
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+    syncIntervalId = null;
+  }
+
+  // Gather keys to delete
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('travel_')) {
+      keysToRemove.push(key);
+    }
+  }
+
+  // Perform deletion
+  keysToRemove.forEach(key => localStorage.removeItem(key));
+
+  // Initialize empty state correctly so next load or render won't inject default data
+  localStorage.setItem('travel_trips', '[]');
+  localStorage.removeItem('travel_active_trip_id');
+
+  // Reset internal memory variables
+  trips = [];
+  activeTripId = null;
+
+  // Switch back to dashboard view first
+  switchView('dashboard');
+
+  // Show a beautiful toast notification
+  showToast('🚨 所有本機資料已成功刪除，帳本已重置！');
 }
 
 // -------------------------------------------------------------
@@ -2895,8 +3006,8 @@ async function syncPullCloud(quiet = false) {
         if (trip.endDate !== cloudTrip.endDate) { trip.endDate = cloudTrip.endDate; hasChanges = true; }
         
         if (hasChanges) {
-          // Save directly to localStorage bypassing saveData auto-push
-          localStorage.setItem('travel_trips', JSON.stringify(trips));
+          // Save and push the fully merged state to cloud so everyone is in sync
+          saveData();
           renderApp();
           if (!quiet) showToast('🔄 帳本已與雲端同步更新');
         }
