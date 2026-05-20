@@ -2260,3 +2260,47 @@ input:checked + .slider:before {
   color: var(--text-main);
   white-space: nowrap;
 }
+
+/* Direct Trip Delete Button inside settings list item */
+.btn-delete-trip-direct {
+  background: rgba(255, 77, 79, 0.08);
+  border: 1px solid rgba(255, 77, 79, 0.25);
+  color: var(--danger);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.btn-delete-trip-direct:hover {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+  transform: scale(1.08);
+  box-shadow: 0 4px 10px rgba(255, 77, 79, 0.25);
+}
+
+.btn-delete-trip-direct:active {
+  transform: scale(0.92);
+}
+
+.btn-delete-trip-direct svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.btn-delete-trip-direct:hover svg {
+  transform: rotate(5deg);
+}
+
