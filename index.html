@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>專業海外出國記帳工具 - 旅遊達人必備離線拆帳 App</title>
+  <meta name="description" content="出國旅遊記帳好幫手！支援離線匯率、外幣台幣對照、個人錢包現金水位追蹤，以及無痛旅伴拆帳分算，適合手機隨身記帳。">
+  
+  <!-- Web App capabilities for mobile standalone installations (PWA) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="出國記帳">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230b0b10'/><circle cx='50' cy='50' r='30' fill='none' stroke='%23ff7a45' stroke-width='8'/><path d='M35 50 L45 60 L65 40' fill='none' stroke='%23ffc069' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- Simulated Phone Viewport or Mobile Fullscreen -->
+  <div class="app-container" id="app-viewport">
+    
+    <!-- Header -->
+    <header>
+      <h1>出國記帳 🧳</h1>
+      <div class="header-actions">
+        <div class="trip-badge" id="current-trip-badge" onclick="switchView('settings')">
+          <!-- Active trip name will be injected here -->
+          ✈️ 載入中...
+        </div>
+      </div>
+    </header>
+
+    <!-- Main View Section Container -->
+    <main class="view-port">
+      
+      <!-- 1. Dashboard Page View -->
+      <section id="view-dashboard" class="view-section active">
+        <!-- Rendered dynamically via app.js -->
+      </section>
+
+      <!-- 2. Ledger Page View -->
+      <section id="view-ledger" class="view-section">
+        <!-- Rendered dynamically via app.js -->
+      </section>
+
+      <!-- 3. Split Bill Page View -->
+      <section id="view-split-bill" class="view-section">
+        <!-- Rendered dynamically via app.js -->
+      </section>
+
+      <!-- 4. Settings Page View -->
+      <section id="view-settings" class="view-section">
+        <!-- Rendered dynamically via app.js -->
+      </section>
+
+    </main>
+
+    <!-- Floating Action Button for adding expense -->
+    <button class="fab-btn" id="fab-add" aria-label="記帳按鈕">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+
+    <!-- Navigation Bar -->
+    <nav class="bottom-nav">
+      <a class="nav-item active" data-view="dashboard" id="nav-dash">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        儀表板
+      </a>
+      <a class="nav-item" data-view="ledger" id="nav-ledger">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        帳本明細
+      </a>
+      <a class="nav-item" data-view="split-bill" id="nav-split">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        旅伴拆帳
+      </a>
+      <a class="nav-item" data-view="settings" id="nav-settings">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        系統設定
+      </a>
+    </nav>
+    
+    <!-- 5. Slide-up bottom sheet drawer for adding/editing transaction -->
+    <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+      <div class="drawer-header">
+        <h3 class="drawer-title" id="drawer-title-text">記下一筆海外花費 ✈️</h3>
+        <button class="drawer-close" onclick="closeDrawer()" aria-label="關閉彈窗">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      
+      <div class="drawer-content">
+        <!-- Interactive Input Field -->
+        <div class="form-group">
+          <label class="form-label" style="display: flex; justify-content: space-between;">
+            <span>輸入金額 (點擊代號切換幣別)</span>
+            <span style="color: var(--accent); cursor: pointer;" onclick="keypadBuffer = '0'; keypadTap('0');">歸零 C</span>
+          </label>
+          <div class="drawer-input-row">
+            <span class="drawer-currency-badge" id="currency-badge-foreign" onclick="setInputType('foreign')">外幣</span>
+            <span style="color: var(--text-muted); margin-right: 8px;">|</span>
+            <span class="drawer-currency-badge" id="currency-badge-base" onclick="setInputType('base')" style="color: var(--text-muted);">台幣</span>
+            <input type="text" class="drawer-input-amount" id="drawer-amt-foreign" value="0" readonly>
+          </div>
+          <!-- Auto Equivalent Display -->
+          <div class="drawer-equivalent-text" id="drawer-equivalent-val">
+            ≈ NT$ 0
+          </div>
+        </div>
+
+        <!-- Category Grid Selector -->
+        <div class="form-group">
+          <label class="form-label">選擇消費類別</label>
+          <div class="category-picker-grid">
+            <div class="category-pill active" data-category="food">
+              <span class="category-pill-icon">🍔</span>
+              <span class="category-pill-name">餐飲美食</span>
+            </div>
+            <div class="category-pill" data-category="transport">
+              <span class="category-pill-icon">🚇</span>
+              <span class="category-pill-name">交通票券</span>
+            </div>
+            <div class="category-pill" data-category="lodging">
+              <span class="category-pill-icon">🏨</span>
+              <span class="category-pill-name">住宿飯店</span>
+            </div>
+            <div class="category-pill" data-category="shopping">
+              <span class="category-pill-icon">🛍️</span>
+              <span class="category-pill-name">購物血拼</span>
+            </div>
+            <div class="category-pill" data-category="play">
+              <span class="category-pill-icon">🎟️</span>
+              <span class="category-pill-name">景點娛樂</span>
+            </div>
+            <div class="category-pill" data-category="flight">
+              <span class="category-pill-icon">✈️</span>
+              <span class="category-pill-name">機票行前</span>
+            </div>
+            <div class="category-pill" data-category="souvenir">
+              <span class="category-pill-icon">🎁</span>
+              <span class="category-pill-name">伴手禮物</span>
+            </div>
+            <div class="category-pill" data-category="fee">
+              <span class="category-pill-icon">💼</span>
+              <span class="category-pill-name">手續保險</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description Input -->
+        <div class="form-group">
+          <label class="form-label">備註內容 (例：商品名稱、地點)</label>
+          <input type="text" id="drawer-desc-input" class="drawer-text-input" placeholder="例如：一蘭拉麵、便利商店買水..." autocomplete="off">
+        </div>
+
+        <!-- Payment Method Toggle -->
+        <div class="form-group">
+          <label class="form-label">支付管道</label>
+          <div class="toggle-group" id="method-toggle">
+            <div class="toggle-option active" data-method="cash">💵 現金支付</div>
+            <div class="toggle-option" data-method="card">💳 刷信用卡</div>
+            <div class="toggle-option" data-method="split">👥 多人拆帳</div>
+          </div>
+        </div>
+
+        <!-- Dynamic Split-bill Sub-form (Shown when '多人拆帳' is active) -->
+        <div class="form-group" id="split-bill-section" style="display: none; animation: fadeIn 0.25s ease forwards;">
+          <label class="form-label">誰先付的錢？</label>
+          <select id="drawer-payer-select" class="drawer-text-input" style="padding: 10px 14px; margin-bottom: 12px; background-color: rgba(255, 255, 255, 0.03); color: var(--text-main);">
+            <option value="我">我</option>
+          </select>
+
+          <label class="form-label">參與分攤的旅伴</label>
+          <div class="split-checklist" id="split-checkboxes-container">
+            <!-- Populated dynamically via app.js -->
+          </div>
+        </div>
+
+        <!-- Transaction Date Input -->
+        <div class="form-group">
+          <label class="form-label">消費時間</label>
+          <input type="text" id="drawer-date-input" class="drawer-text-input" placeholder="YYYY-MM-DD HH:MM">
+        </div>
+
+        <!-- Phone-optimised Custom Tactile Keypad -->
+        <div class="form-group">
+          <label class="form-label">專屬數字鍵盤 (防原生遮擋)</label>
+          <div class="keypad-container">
+            <button class="keypad-btn" data-val="1">1</button>
+            <button class="keypad-btn" data-val="2">2</button>
+            <button class="keypad-btn" data-val="3">3</button>
+            <button class="keypad-btn action" data-val="backspace" aria-label="退格">⌫</button>
+            
+            <button class="keypad-btn" data-val="4">4</button>
+            <button class="keypad-btn" data-val="5">5</button>
+            <button class="keypad-btn" data-val="6">6</button>
+            <button class="keypad-btn action" data-val="C" aria-label="清除">C</button>
+            
+            <button class="keypad-btn" data-val="7">7</button>
+            <button class="keypad-btn" data-val="8">8</button>
+            <button class="keypad-btn" data-val="9">9</button>
+            <button class="keypad-btn confirm" data-val="save">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            
+            <button class="keypad-btn" data-val=".">.</button>
+            <button class="keypad-btn" data-val="0">0</button>
+            <button class="keypad-btn" data-val="00">00</button>
+          </div>
+        </div>
+
+        <!-- Save Button (Optional backup if they don't click check icon) -->
+        <button class="btn-save" onclick="saveTransaction()">
+          💾 儲存並記錄帳目
+        </button>
+      </div>
+    </div>
+
+    <!-- 6. Generic Dialog Modal Overlay for creating trips etc. -->
+    <div class="dialog-overlay" id="dialog-overlay" onclick="closeDialog(event)">
+      <!-- Populated dynamically via dialog show functions -->
+    </div>
+
+    <!-- 7. Micro toast notification display -->
+    <div class="toast" id="toast">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span>操作成功</span>
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="./app.js"></script>
+</body>
+</html>
