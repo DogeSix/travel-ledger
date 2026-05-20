@@ -8,6 +8,7 @@ let keypadBuffer = '0';
 let activeInputType = 'foreign'; // 'foreign' or 'base'
 let editingTransactionId = null;
 let activeCategoryFilter = null;
+let isHapticVibrateEnabled = localStorage.getItem('travel_haptic_enabled') !== 'false';
 
 // Categories configuration with icons and CSS class mappings
 const CATEGORIES = {
@@ -642,19 +643,24 @@ function renderSettings() {
     <!-- Trip Selection Card -->
     <div class="card">
       <div class="card-title">旅程選單</div>
-      <div class="settings-list">
+      <div class="settings-list" style="overflow: visible;">
         ${trips.map(t => `
-          <div class="settings-item" onclick="switchTrip('${t.id}')" style="${t.id === activeTripId ? 'border-color: var(--primary); background-color: rgba(255,122,69,0.03);' : ''}">
-            <div class="settings-item-left">
-              <div class="settings-icon-box ${t.id === activeTripId ? 'primary' : ''}">🗺️</div>
-              <div>
-                <div class="settings-label" style="font-weight: ${t.id === activeTripId ? '700' : '500'};">${t.name}</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                  匯率 1 : ${t.exchangeRate} · ${t.foreignCurrency} ➔ ${t.baseCurrency}
+          <div class="swipe-container" data-trip-id="${t.id}">
+            <div class="swipe-content" onclick="switchTrip('${t.id}')" style="${t.id === activeTripId ? 'border-left: 3px solid var(--primary); background-color: rgba(255,122,69,0.03);' : ''}">
+              <div class="settings-item-left">
+                <div class="settings-icon-box ${t.id === activeTripId ? 'primary' : ''}">🗺️</div>
+                <div>
+                  <div class="settings-label" style="font-weight: ${t.id === activeTripId ? '700' : '500'};">${t.name}</div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    匯率 1 : ${t.exchangeRate} · ${t.foreignCurrency} ➔ ${t.baseCurrency}
+                  </div>
                 </div>
               </div>
+              ${t.id === activeTripId ? '<span style="font-size: 11px; color: var(--primary); font-weight: 700;">使用中</span>' : ''}
             </div>
-            ${t.id === activeTripId ? '<span style="font-size: 11px; color: var(--primary); font-weight: 700;">使用中</span>' : ''}
+            <div class="swipe-action-delete" onclick="confirmDeleteTripById('${t.id}', event)">
+              🗑️ 刪除
+            </div>
           </div>
         `).join('')}
       </div>
@@ -718,6 +724,45 @@ function renderSettings() {
         </div>
       </div>
 
+      <!-- Haptic Vibration & Tactile Feedback Setting Card -->
+      <div class="card">
+        <div class="card-title">觸覺震動與觸感回饋 ⚡</div>
+        <div class="settings-list">
+          <div class="settings-item" onclick="toggleHapticVibrate()">
+            <div class="settings-item-left">
+              <div class="settings-icon-box" style="color: var(--primary); background-color: rgba(255,122,69,0.08);">📳</div>
+              <div>
+                <div class="settings-label">物理震動回饋</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="haptic-status-desc">
+                  載入中...
+                </div>
+              </div>
+            </div>
+            <!-- Custom Styled Switch iOS lookalike -->
+            <label class="switch" onclick="event.stopPropagation()">
+              <input type="checkbox" id="haptic-toggle-cb" onchange="toggleHapticVibrate(this.checked)">
+              <span class="slider round"></span>
+            </label>
+          </div>
+          
+          <div class="settings-item" onclick="testHapticVibrate()" id="btn-test-haptic">
+            <div class="settings-item-left">
+              <div class="settings-icon-box accent">🎯</div>
+              <div>
+                <div class="settings-label">點擊測試裝置震動</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">點擊以測試實體震動效果 (Android / 支援設備)</div>
+              </div>
+            </div>
+            <span class="settings-value" style="color: var(--accent); font-weight: bold; background: rgba(54,207,201,0.06); padding: 4px 10px; border-radius: 10px;">測試震動</span>
+          </div>
+        </div>
+        
+        <!-- PWA Custom Diagnostics Device info box -->
+        <div class="haptic-diagnostics-box" id="haptic-diag-box" style="margin-top: 12px; padding: 12px; border-radius: 12px; background-color: rgba(255,255,255,0.02); border: 1px solid var(--border-color); font-size: 11px; line-height: 1.5; color: var(--text-muted);">
+          載入裝置診斷中...
+        </div>
+      </div>
+
       <!-- Backup Export and Import Section -->
       <div class="card">
         <div class="card-title">資料備份與搬移</div>
@@ -737,7 +782,7 @@ function renderSettings() {
               <div class="settings-icon-box">📊</div>
               <div>
                 <div class="settings-label">匯出 CSV 試算表</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">可用 Excel 或 Google 試算表直接編輯</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">檢視精美報表並下載 CSV 檔案</div>
               </div>
             </div>
           </div>
@@ -783,6 +828,77 @@ function renderSettings() {
   `;
 
   settingsContainer.innerHTML = html;
+
+  // Post-render initialization for Settings view elements
+  setTimeout(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const hapticStatusText = document.getElementById('haptic-status-desc');
+    const hapticCheckbox = document.getElementById('haptic-toggle-cb');
+    const hapticDiagBox = document.getElementById('haptic-diag-box');
+    
+    if (hapticCheckbox) hapticCheckbox.checked = isHapticVibrateEnabled;
+    
+    if (isIOS) {
+      if (hapticStatusText) hapticStatusText.innerText = "iOS 系統限制 (網頁無物理震動)";
+      if (hapticDiagBox) {
+        hapticDiagBox.innerHTML = `
+          <span style="color: var(--secondary); font-weight: bold;">💡 裝置診斷：Apple iOS 系統</span><br>
+          由於 Apple 官方的安全隱私政策，iOS 平台（包含 iPhone）的 Safari 與 LINE 內建瀏覽器並不支援網頁直接呼叫手機震動。
+          <br><br>
+          為了確保您的記帳手感，本工具已**自動開啟「高傳真機械式微型音效 click 回饋」**，每一次點擊自訂鍵盤都會發出極具質感的機械點擊聲，模擬真實觸控面板。
+        `;
+      }
+      const testHapticBtn = document.getElementById('btn-test-haptic');
+      if (testHapticBtn) {
+        testHapticBtn.style.opacity = '0.6';
+      }
+    } else {
+      const isVibrationSupported = 'vibrate' in navigator;
+      if (hapticStatusText) {
+        hapticStatusText.innerText = isHapticVibrateEnabled ? "開啟中 (每一次點擊都會產生觸覺震動)" : "已關閉";
+      }
+      if (hapticDiagBox) {
+        hapticDiagBox.innerHTML = `
+          <span style="color: var(--accent); font-weight: bold;">✅ 裝置診斷：支援物理震動 (${isVibrationSupported ? '已就緒' : '不支援'})</span><br>
+          目前偵測到您的瀏覽器具備 Web Vibration 支援！
+          <br><br>
+          我們為您啟用了**雙重 haptic 回饋系統**（短暫物理敲擊震動 + 微型音效）。這在 Android 實機、Chrome 瀏覽器及 LINE 中皆可提供像實體計算機般的紮實按壓手感。
+        `;
+      }
+    }
+  }, 20);
+}
+
+// -------------------------------------------------------------
+// Haptic and Tactile Settings handlers
+
+function toggleHapticVibrate(checked) {
+  if (checked !== undefined) {
+    isHapticVibrateEnabled = checked;
+  } else {
+    isHapticVibrateEnabled = !isHapticVibrateEnabled;
+  }
+  localStorage.setItem('travel_haptic_enabled', isHapticVibrateEnabled ? 'true' : 'false');
+  
+  // Re-render settings to refresh text
+  renderSettings();
+  showToast(isHapticVibrateEnabled ? '📳 物理震動已開啟！' : '📴 物理震動已關閉');
+  
+  if (isHapticVibrateEnabled && navigator.vibrate) {
+    navigator.vibrate(20);
+  }
+}
+
+function testHapticVibrate() {
+  if (navigator.vibrate) {
+    showToast('⚡ 觸覺震動測試中...');
+    navigator.vibrate([30, 40, 30]);
+  } else {
+    showToast('⚠️ 您的裝置目前不支援物理震動功能');
+    if (typeof playClickSound === 'function') {
+      playClickSound();
+    }
+  }
 }
 
 // -------------------------------------------------------------
@@ -1600,11 +1716,63 @@ function createTripSubmit() {
 }
 
 function switchTrip(tripId) {
+  // If there's an active swipe open, do not switch, just close it and return
+  const openSwipe = document.querySelector('.swipe-container.swipe-open');
+  if (openSwipe) {
+    document.querySelectorAll('.swipe-container').forEach(el => {
+      const content = el.querySelector('.swipe-content');
+      const deleteBtn = el.querySelector('.swipe-action-delete');
+      if (content && deleteBtn) {
+        content.style.transition = 'transform 0.2s ease';
+        deleteBtn.style.transition = 'transform 0.2s ease';
+        content.style.transform = 'translateX(0px)';
+        deleteBtn.style.transform = 'translateX(100%)';
+      }
+      el.classList.remove('swipe-open');
+    });
+    return;
+  }
+  
   activeTripId = tripId;
   saveData();
   renderApp();
   startCloudSyncPolling(); // Restart polling for the active trip
   showToast('🗺️ 已切換旅程記帳本');
+}
+
+function confirmDeleteTripById(tripId, event) {
+  if (event) event.stopPropagation(); // Stop click bubbling to switchTrip
+  
+  const tripToDelete = trips.find(t => t.id === tripId);
+  if (!tripToDelete) return;
+  
+  if (confirm(`🚨 警告！你即將永久刪除 「${tripToDelete.name}」 旅程記帳本。\n此動作將不可逆，所有消費明細與拆帳記錄都將消失！是否確認刪除？`)) {
+    trips = trips.filter(t => t.id !== tripId);
+    if (activeTripId === tripId) {
+      if (trips.length > 0) {
+        activeTripId = trips[0].id;
+      } else {
+        activeTripId = null;
+      }
+    }
+    saveData();
+    renderApp();
+    showToast('🗑️ 旅程已成功刪除');
+  } else {
+    // Smoothly snap back swipe delete button
+    const container = document.querySelector(`.swipe-container[data-trip-id="${tripId}"]`);
+    if (container) {
+      const content = container.querySelector('.swipe-content');
+      const deleteBtn = container.querySelector('.swipe-action-delete');
+      if (content && deleteBtn) {
+        content.style.transition = 'transform 0.2s ease';
+        deleteBtn.style.transition = 'transform 0.2s ease';
+        content.style.transform = 'translateX(0px)';
+        deleteBtn.style.transform = 'translateX(100%)';
+      }
+      container.classList.remove('swipe-open');
+    }
+  }
 }
 
 function editExchangeRate() {
@@ -1675,15 +1843,321 @@ function confirmDeleteTrip() {
 // -------------------------------------------------------------
 // JSON and CSV Exports / Imports
 
+// Data backup and migration viewer screen for mobile devices & desktop
+// Data backup, migration and report viewer screen for mobile devices & desktop
+function showReportViewer(title, content, fileType) {
+  const overlay = document.getElementById('dialog-overlay');
+  if (!overlay) return;
+  
+  const displayContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+  window.lastBackupContent = displayContent;
+  window.lastBackupTitle = title;
+  
+  if (fileType === 'csv') {
+    const trip = getActiveTrip();
+    const totalTx = trip ? trip.transactions.length : 0;
+    const totalForeignSpent = trip ? trip.transactions.reduce((acc, t) => acc + t.amountForeign, 0) : 0;
+    const totalBaseSpent = trip ? trip.transactions.reduce((acc, t) => acc + t.amountBase, 0) : 0;
+    
+    // Breakdown of cash vs card vs split spending
+    const cashSpent = trip ? trip.transactions.filter(t => t.paymentMethod === 'cash').reduce((acc, t) => acc + t.amountBase, 0) : 0;
+    const cardSpent = trip ? trip.transactions.filter(t => t.paymentMethod === 'card').reduce((acc, t) => acc + t.amountBase, 0) : 0;
+    const splitSpent = trip ? trip.transactions.filter(t => t.paymentMethod === 'split').reduce((acc, t) => acc + t.amountBase, 0) : 0;
+    const totalSpentBase = cashSpent + cardSpent + splitSpent;
+    
+    const cashPct = totalSpentBase > 0 ? Math.round(cashSpent / totalSpentBase * 100) : 0;
+    const cardPct = totalSpentBase > 0 ? Math.round(cardSpent / totalSpentBase * 100) : 0;
+    const splitPct = totalSpentBase > 0 ? Math.round(splitSpent / totalSpentBase * 100) : 0;
+
+    overlay.innerHTML = `
+      <div class="dialog report-viewer-dialog" onclick="event.stopPropagation()">
+        <h3 class="dialog-title" style="font-size: 17px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span>📊 ${title}</span>
+          <button onclick="closeDialog()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; padding: 4px;">&times;</button>
+        </h3>
+        <p class="dialog-desc" style="font-size: 11px; margin-bottom: 12px; line-height: 1.4;">
+          您已成功生成消費記帳報表！您可在下方預覽並篩選明細項目，或直接點擊按鈕下載 CSV 試算表及複製內容。
+        </p>
+        
+        <!-- Expense Summary Cards -->
+        <div class="report-summary-box">
+          <div class="report-summary-item">
+            <span class="report-summary-label">📊 總明細筆數</span>
+            <span class="report-summary-val" style="color: var(--secondary);"><span id="report-filtered-count">${totalTx}</span> 筆</span>
+          </div>
+          <div class="report-summary-item">
+            <span class="report-summary-label">💰 外幣總支出</span>
+            <span class="report-summary-val"><span id="report-filtered-fsum">${Math.round(totalForeignSpent).toLocaleString()}</span> <span style="font-size: 11px; color: var(--text-muted);">${trip ? trip.foreignCurrency : ''}</span></span>
+          </div>
+          <div class="report-summary-item">
+            <span class="report-summary-label">💵 折合台幣總額</span>
+            <span class="report-summary-val" style="color: var(--accent);">NT$ <span id="report-filtered-bsum">${Math.round(totalBaseSpent).toLocaleString()}</span></span>
+          </div>
+        </div>
+
+        <!-- Payment methods bar in report -->
+        <div style="display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); margin-bottom: 12px; justify-content: space-around; background: rgba(255,255,255,0.01); padding: 8px; border-radius: 10px; border: 1px dashed var(--border-color);">
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background-color: var(--secondary);"></div>
+            <span>現金消費: <strong>${cashPct}%</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background-color: var(--accent);"></div>
+            <span>信用卡: <strong>${cardPct}%</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #b37feb;"></div>
+            <span>多人拆帳: <strong>${splitPct}%</strong></span>
+          </div>
+        </div>
+        
+        <!-- Live Search Field in Report -->
+        <div class="report-search-bar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" class="report-search-input" placeholder="在報表中即時搜尋備註、分類、付款管道或日期..." oninput="filterReportViewerTable(this.value)">
+        </div>
+
+        <!-- Responsive scrollable table -->
+        <div class="report-table-wrapper">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>日期時間</th>
+                <th>消費類別</th>
+                <th>支付管道</th>
+                <th>項目描述</th>
+                <th class="text-right">外幣金額</th>
+                <th class="text-right">折合台幣</th>
+                <th>付款人</th>
+                <th>分攤名單</th>
+              </tr>
+            </thead>
+            <tbody id="report-table-body">
+              <!-- Populated dynamically via initial filterReportViewerTable call -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Collapsible raw CSV text area -->
+        <div class="accordion-title" onclick="toggleRawReportData()">
+          <span>📄 檢視原始 CSV 純文字資料 (供複製貼上)</span>
+          <span id="accordion-arrow">▼</span>
+        </div>
+        <div id="raw-report-container" style="display: none; margin-top: 8px; margin-bottom: 12px; animation: fadeIn 0.2s ease;">
+          <textarea id="backup-text-area" class="drawer-text-input" readonly style="height: 90px; font-family: monospace; font-size: 10px; line-height: 1.4; background-color: rgba(0,0,0,0.3); color: #a5a5cd; white-space: pre; overflow-x: auto; resize: none; border-radius: 10px; padding: 8px; width: 100%; box-sizing: border-box; border: 1px solid var(--border-color);">${displayContent}</textarea>
+        </div>
+
+        <!-- Dialogue Action Buttons -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+          <button class="btn-primary" onclick="copyBackupToClipboard()" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--accent) 0%, #36cfc1 100%); color: var(--text-dark); border-radius: 12px; font-size: 13px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(54, 207, 201, 0.2);">
+            📋 複製 CSV 報表
+          </button>
+          <button class="btn-primary" onclick="triggerFileDownload('${fileType}')" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--primary) 0%, #ff7a45 100%); color: white; border-radius: 12px; font-size: 13px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(255, 122, 69, 0.25);">
+            💾 下載 CSV 檔案
+          </button>
+        </div>
+        
+        <button class="btn-secondary" onclick="closeDialog()" style="width: 100%; height: 38px; margin-top: 8px; border-color: rgba(255,255,255,0.06); color: var(--text-muted); border-radius: 12px; font-size: 12px; font-weight: 600; cursor: pointer;">
+          ✕ 關閉報表檢視
+        </button>
+      </div>
+    `;
+    
+    // Initialize the report table with all transactions
+    filterReportViewerTable('');
+    
+  } else {
+    // JSON Backup view (Standard backup look)
+    overlay.innerHTML = `
+      <div class="dialog" onclick="event.stopPropagation()" style="max-width: 420px; width: 92%; box-sizing: border-box; padding: 20px;">
+        <h3 class="dialog-title" style="font-size: 17px; margin-bottom: 6px;">${title} 📋</h3>
+        <p class="dialog-desc" style="font-size: 12px; margin-bottom: 14px; line-height: 1.4;">
+          您的 JSON 系統備份資料已成功生成。這包含您在此手機上登錄的所有旅程與記帳記錄。您可以下載備份檔或複製至其他手機進行還原。
+        </p>
+        
+        <div class="form-group" style="margin-bottom: 14px;">
+          <textarea id="backup-text-area" class="drawer-text-input" readonly style="height: 140px; font-family: monospace; font-size: 11px; line-height: 1.4; background-color: rgba(0,0,0,0.3); color: #a5a5cd; white-space: pre; overflow-x: auto; resize: none; border-radius: 12px; padding: 10px; width: 100%; box-sizing: border-box; border: 1px solid var(--border-color);">${displayContent}</textarea>
+        </div>
+        
+        <div class="dialog-buttons" style="display: flex; flex-direction: column; gap: 8px; justify-content: stretch; align-items: stretch;">
+          <button class="btn-primary" onclick="copyBackupToClipboard()" style="width: 100%; height: 42px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--accent) 0%, #36cfc1 100%); color: var(--text-dark); border-radius: 12px; font-size: 13px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(54, 207, 201, 0.2);">
+            📋 複製 JSON 備份文字
+          </button>
+          <button class="btn-secondary" onclick="triggerFileDownload('${fileType}')" style="width: 100%; height: 42px; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer;">
+            💾 下載 JSON 備份檔案
+          </button>
+          <button class="btn-secondary" onclick="closeDialog()" style="width: 100%; height: 38px; margin-top: 4px; border-color: rgba(255,255,255,0.08); color: var(--text-muted); border-radius: 12px; font-size: 12px; font-weight: 600; cursor: pointer;">
+            關閉檢視視窗
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  
+  overlay.classList.add('active');
+}
+
+// Interactive filter for the report viewer table
+function filterReportViewerTable(query) {
+  const trip = getActiveTrip();
+  if (!trip) return;
+  
+  const tbody = document.getElementById('report-table-body');
+  if (!tbody) return;
+  
+  const q = query.toLowerCase().trim();
+  let count = 0;
+  let foreignSum = 0;
+  let baseSum = 0;
+  
+  let html = '';
+  
+  trip.transactions.forEach(t => {
+    const catName = CATEGORIES[t.category]?.name || '其他';
+    const catIcon = CATEGORIES[t.category]?.icon || '❓';
+    let payMethodStr = '現金';
+    let payClass = 'cash';
+    if (t.paymentMethod === 'card') {
+      payMethodStr = '刷卡';
+      payClass = 'card';
+    } else if (t.paymentMethod === 'split') {
+      payMethodStr = '多人拆帳';
+      payClass = 'split';
+    }
+    
+    const desc = t.desc || '';
+    const payer = t.payer || '我';
+    const splitWith = (t.splitWith || []).join(', ');
+    
+    // Check if matching search query
+    const match = 
+      desc.toLowerCase().includes(q) || 
+      catName.toLowerCase().includes(q) || 
+      payMethodStr.toLowerCase().includes(q) || 
+      payer.toLowerCase().includes(q) ||
+      t.date.toLowerCase().includes(q);
+      
+    if (q === '' || match) {
+      count++;
+      foreignSum += t.amountForeign;
+      baseSum += t.amountBase;
+      
+      html += `
+        <tr>
+          <td><span class="report-cell-date">${t.date}</span></td>
+          <td><span class="report-cell-cat">${catIcon} ${catName}</span></td>
+          <td><span class="ledger-paymethod ${payClass}">${payMethodStr}</span></td>
+          <td><span class="report-cell-desc">${desc || '—'}</span></td>
+          <td class="report-cell-amt text-right">${t.amountForeign.toLocaleString()} ${trip.foreignCurrency}</td>
+          <td class="report-cell-amt text-right" style="color: var(--accent);">NT$ ${t.amountBase.toLocaleString()}</td>
+          <td><span class="report-cell-payer">${payer}</span></td>
+          <td><span class="report-cell-split" title="${splitWith}">${splitWith || '無'}</span></td>
+        </tr>
+      `;
+    }
+  });
+  
+  tbody.innerHTML = html;
+  
+  // Update dynamic count and sum in preview
+  const countEl = document.getElementById('report-filtered-count');
+  const fSumEl = document.getElementById('report-filtered-fsum');
+  const bSumEl = document.getElementById('report-filtered-bsum');
+  
+  if (countEl) countEl.innerText = count.toString();
+  if (fSumEl) fSumEl.innerText = Math.round(foreignSum).toLocaleString();
+  if (bSumEl) bSumEl.innerText = Math.round(baseSum).toLocaleString();
+  
+  if (count === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">
+          🔍 找不到符合「${query}」的記帳項目
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// Toggle raw report data accordion
+function toggleRawReportData() {
+  const container = document.getElementById('raw-report-container');
+  const arrow = document.getElementById('accordion-arrow');
+  if (!container || !arrow) return;
+  
+  if (container.style.display === 'none') {
+    container.style.display = 'block';
+    arrow.innerText = '▲';
+  } else {
+    container.style.display = 'none';
+    arrow.innerText = '▼';
+  }
+}
+
+// Global helpers for backup window
+window.copyBackupToClipboard = function() {
+  const textarea = document.getElementById('backup-text-area');
+  if (!textarea) return;
+  
+  textarea.select();
+  textarea.setSelectionRange(0, 99999);
+  
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(window.lastBackupContent).then(() => {
+        showToast('📋 備份內容已成功複製！');
+      }).catch(() => {
+        document.execCommand('copy');
+        showToast('📋 備份內容已成功複製！');
+      });
+    } else {
+      document.execCommand('copy');
+      showToast('📋 備份內容已成功複製！');
+    }
+  } catch (err) {
+    showToast('❌ 複製失敗，請手動複製');
+  }
+};
+
+window.triggerFileDownload = function(fileType) {
+  try {
+    const content = window.lastBackupContent;
+    const dateStr = new Date().toISOString().split('T')[0];
+    
+    let blob, filename;
+    if (fileType === 'json') {
+      blob = new Blob([content], { type: 'application/json;charset=utf-8;' });
+      filename = `出國記帳備份_${dateStr}.json`;
+    } else {
+      blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const activeTrip = trips.find(t => t.id === activeTripId);
+      const tripName = activeTrip ? activeTrip.name : '旅程';
+      filename = `${tripName}_記帳明細_${dateStr}.csv`;
+    }
+    
+    const url = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", url);
+    downloadAnchor.setAttribute("download", filename);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    
+    setTimeout(() => {
+      document.body.removeChild(downloadAnchor);
+      URL.revokeObjectURL(url);
+    }, 100);
+    
+    showToast('💾 備份檔案下載已觸發！');
+  } catch (err) {
+    showToast('❌ 下載失敗，請使用複製功能');
+  }
+};
+
 function exportTripJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(trips, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `出國記帳備份_${new Date().toISOString().split('T')[0]}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-  showToast('📤 JSON 備份檔案已成功匯出');
+  const content = JSON.stringify(trips, null, 2);
+  showReportViewer('匯出 JSON 旅程備份', content, 'json');
 }
 
 function exportTripCSV() {
@@ -1705,14 +2179,7 @@ function exportTripCSV() {
     csvContent += `"${t.date}","${cat}","${payMethod}","${desc}",${t.amountForeign},"${trip.foreignCurrency}",${t.amountBase},"${t.payer || '我'}","${companions}"\n`;
   });
   
-  const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", encodedUri);
-  downloadAnchor.setAttribute("download", `${trip.name}_記帳明細.csv`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-  showToast('📊 CSV 試算表已成功匯出');
+  showReportViewer(`${trip.name} 記帳明細 (CSV)`, csvContent, 'csv');
 }
 
 function importTripJSON(event) {
@@ -1745,6 +2212,37 @@ function importTripJSON(event) {
 
 // -------------------------------------------------------------
 // Interactive Helpers & Event Listeners setup
+
+// Global Web Audio click sound synthesizer
+let audioCtx = null;
+function playClickSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'sine';
+    // Short high-pitched mechanical click sweep
+    osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.04);
+    
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime); // Subtle volume
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.04);
+  } catch (e) {
+    console.log('AudioContext haptic click error:', e);
+  }
+}
 
 function setupEventListeners() {
   // Bottom navigation clicks
@@ -1781,60 +2279,40 @@ function setupEventListeners() {
     });
   });
 
-  // Web Audio click sound synthesizer
-  let audioCtx = null;
-  function playClickSound() {
-    try {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      
-      osc.type = 'sine';
-      // High-pitched short click: sweep from 1500Hz to 150Hz in 40ms for a very mechanical click feeling
-      osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.04);
-      
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime); // keep volume subtle and premium
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
-      
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.04);
-    } catch (e) {
-      console.log('AudioContext haptic error:', e);
-    }
-  }
-
-  // Keypad clicks setup
+  // Pointer Events high-performance clicks setup
   document.querySelectorAll('.keypad-btn').forEach(btn => {
     const val = btn.dataset.val;
     let isPressed = false;
 
     const pressStart = (e) => {
-      // Avoid multi-touch or multiple triggers
       if (isPressed) return;
       isPressed = true;
       
-      e.preventDefault(); // Stop secondary double-triggers between mousedown & touchstart
-      
-      // 1. Tactile haptic feedback (vibrate 15ms)
-      if (navigator.vibrate) {
-        navigator.vibrate(15);
-      }
-      // Audio click haptic (crucial for iOS)
+      // 1. Premium mechanical oscillator sound click (Immediate Web Audio click fallback for iOS/All devices)
       playClickSound();
       
-      // 2. High-performance visual keypad-btn flash
+      // 2. Haptic vibration feedback (Android / Windows Chrome Mobile)
+      if (isHapticVibrateEnabled && navigator.vibrate) {
+        try {
+          if (val === 'save') {
+            // Triple success pattern
+            navigator.vibrate([40, 30, 20]);
+          } else if (val === 'backspace' || val === 'C') {
+            // Double warning pattern
+            navigator.vibrate([15, 20, 15]);
+          } else {
+            // Single clean tactile feedback tick
+            navigator.vibrate(12);
+          }
+        } catch (err) {
+          console.warn('Tactile vibration request failed:', err);
+        }
+      }
+      
+      // 3. Smooth tactile transition styling class
       btn.classList.add('active-flash');
       
-      // 3. Trigger logic
+      // 4. Input processing trigger
       if (val === 'save') {
         saveTransaction();
       } else {
@@ -1848,18 +2326,14 @@ function setupEventListeners() {
       btn.classList.remove('active-flash');
     };
 
-    // Bind touch events
-    btn.addEventListener('touchstart', pressStart, { passive: false });
-    btn.addEventListener('touchend', pressEnd, { passive: false });
-    btn.addEventListener('touchcancel', pressEnd, { passive: false });
-
-    // Bind mouse events
-    btn.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return; // Only left click
+    // Use Pointer Events for single-touch / multi-touch high responsive touch gestures (no 300ms delays, no focus theft)
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); // Prevents focus theft and default browser selection highlight
       pressStart(e);
     });
-    btn.addEventListener('mouseup', pressEnd);
-    btn.addEventListener('mouseleave', pressEnd);
+    btn.addEventListener('pointerup', pressEnd);
+    btn.addEventListener('pointercancel', pressEnd);
+    btn.addEventListener('pointerleave', pressEnd);
   });
 }
 
