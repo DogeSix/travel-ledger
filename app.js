@@ -455,7 +455,6 @@ function clearCategoryFilter() {
   renderLedger();
 }
 
-
 // Render 2: Ledger View
 function renderLedger() {
   const trip = getActiveTrip();
@@ -466,6 +465,7 @@ function renderLedger() {
     return;
   }
 
+  const myIdentity = getMyIdentity(trip);
   const query = (document.getElementById('ledger-search-input')?.value || '').toLowerCase();
   
   // Filter transactions
@@ -536,13 +536,11 @@ function renderLedger() {
               <span class="ledger-paymethod ${payClass}">${payMethodStr}</span>
             </div>
             <div class="ledger-desc">${t.desc || '（無備註內容）'}</div>
-            <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${t.date} · 由 ${t.payer || '我'} 付款</div>
+            <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${t.date} · 由 ${getPayerDisplayName(t.payer || '我', myIdentity)} 付款</div>
           </div>
           <div class="ledger-amounts">
             <div class="ledger-amount-base" style="font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--text-main);">${t.amountForeign.toLocaleString()} <span style="font-size: 11px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span></div>
             <div class="ledger-amount-foreign" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NT$ ${t.amountBase.toLocaleString()}</div>
-          </div>
-        </div>
       `;
     });
     html += `</div>`;
@@ -563,6 +561,7 @@ function renderSplitBill() {
 
   const companions = trip.companions || [];
   const settlements = calculateSettlements(trip);
+  const myIdentity = getMyIdentity(trip);
 
   const isSynced = !!trip.cloudRoomId;
   const syncRoomId = trip.cloudRoomId || '';
@@ -579,10 +578,15 @@ function renderSplitBill() {
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
           此帳本已成功連接雲端！好友在 LINE 內點擊下方專屬連結即可加入。往後任何人的新增修改都會在背景秒級自動同步更新，操作體驗與 Lightsplit 完全一致！
         </p>
-        <button class="btn-primary" onclick="shareActiveTripToLINE()" style="background: #07c160; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; border-radius: 14px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(7, 193, 96, 0.25);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          透過 LINE 分享/邀請好友加入
-        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-primary" onclick="shareActiveTripToLINE()" style="flex: 2; background: #07c160; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: 14px; border: none; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(7, 193, 96, 0.25);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            邀請好友加入
+          </button>
+          <button class="btn-primary" onclick="manualSyncPullCloud()" id="btn-manual-sync" style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #f0f0f5; display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; border-radius: 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;">
+            <span id="sync-icon-spin" style="display: inline-block;">🔄</span> 立即同步
+          </button>
+        </div>
       </div>
     `;
   } else {
@@ -618,7 +622,7 @@ function renderSplitBill() {
         ` : settlements.map(s => `
           <div class="split-matrix-row">
             <div class="split-matrix-who">
-              <strong>${s.debtor}</strong> <span>👉</span> <strong>${s.creditor}</strong>
+              <strong>${s.debtor === myIdentity ? `${s.debtor} (我)` : (s.debtor === '我' ? '記帳發起人' : s.debtor)}</strong> <span>👉</span> <strong>${s.creditor === myIdentity ? `${s.creditor} (我)` : (s.creditor === '我' ? '記帳發起人' : s.creditor)}</strong>
             </div>
             <div class="split-matrix-amount" style="color: var(--accent); font-weight: 700; font-family: var(--font-title); text-align: right;">
               ${Math.round(s.amount).toLocaleString()} <span style="font-size: 10px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span>
@@ -635,33 +639,48 @@ function renderSplitBill() {
 
     <!-- Companions management -->
     <div class="card">
-      <div class="card-title">管理旅伴群組</div>
-      <div class="form-row-inline">
+      <div class="card-title" style="margin-bottom: 6px;">管理旅伴群組</div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+        💡 提示：<b>點擊下方旅伴項目卡片</b>，即可將其設為您的「本機記帳身份」，該身份將連動預設付款人，並在拆帳列表中為您打上 <span style="color: #ff7a45; font-weight: bold;">(我)</span> 標記，共同記帳更精確！
+      </div>
+      <div class="form-row-inline" style="margin-bottom: 16px;">
         <input type="text" id="companion-add-input" class="drawer-text-input" style="padding: 8px 14px;" placeholder="輸入旅伴名字...">
         <button class="btn-primary" onclick="addCompanion()">添加</button>
       </div>
 
       <div class="split-companion-list">
         <!-- Self is implicit -->
-        <div class="split-companion-item">
+        <div class="split-companion-item ${myIdentity === '我' ? 'active-identity' : ''}" onclick="setMyIdentity('我')">
           <div class="companion-name">
             <div class="companion-avatar" style="background-color: var(--secondary);">我</div>
-            我（記帳發起人）
+            ${myIdentity === '我' ? '我（記帳發起人）' : '記帳發起人'}
           </div>
-          <span style="font-size: 11px; color: var(--text-muted);">發起人</span>
+          ${myIdentity === '我' ? `
+            <span style="font-size: 10px; background: rgba(255, 122, 69, 0.15); color: #ff7a45; padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-left: auto; display: flex; align-items: center; gap: 4px; box-shadow: 0 0 8px rgba(255, 122, 69, 0.2);">我的身份 👤</span>
+          ` : `
+            <span style="font-size: 11px; color: var(--text-muted);">發起人</span>
+          `}
         </div>
         
-        ${companions.map(c => `
-          <div class="split-companion-item">
-            <div class="companion-name">
-              <div class="companion-avatar">${c.charAt(0)}</div>
-              ${c}
+        ${companions.map(c => {
+          const isActive = myIdentity === c;
+          return `
+            <div class="split-companion-item ${isActive ? 'active-identity' : ''}" onclick="setMyIdentity('${c}')">
+              <div class="companion-name">
+                <div class="companion-avatar">${c.charAt(0)}</div>
+                ${isActive ? `${c} (我)` : c}
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                ${isActive ? `
+                  <span style="font-size: 10px; background: rgba(255, 122, 69, 0.15); color: #ff7a45; padding: 2px 8px; border-radius: 10px; font-weight: bold; display: flex; align-items: center; gap: 4px; box-shadow: 0 0 8px rgba(255, 122, 69, 0.2);">我的身份 👤</span>
+                ` : ''}
+                <button class="btn-remove-companion" onclick="event.stopPropagation(); removeCompanion('${c}')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              </div>
             </div>
-            <button class="btn-remove-companion" onclick="removeCompanion('${c}')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-            </button>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     </div>
   `;
@@ -833,7 +852,7 @@ function renderSettings() {
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
           清除所有記帳與旅程資料。此操作不可逆，請確保已下載備份檔案。
         </p>
-        <button class="btn-primary" onclick="if(confirm('⚠️ 警告：這將會清除本 App 內的所有旅程與記帳資料，且無法還原！\n確定要清除所有資料嗎？')) { localStorage.clear(); location.reload(); }" style="background: #ff4d4f; color: white; border: none; width: 100%; height: 40px; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);">
+        <button class="btn-primary" onclick="clearAllAppData()" style="background: #ff4d4f; color: white; border: none; width: 100%; height: 40px; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);">
           🚨 刪除 App 所有本機資料
         </button>
       </div>
@@ -1188,16 +1207,22 @@ function populateSplitCheckboxSection() {
     return;
   }
   
+  const myIdentity = getMyIdentity(trip);
+  
   // Payer select dropdown
   const payerSelect = document.getElementById('drawer-payer-select');
-  payerSelect.innerHTML = `<option value="我">我</option>` + companions.map(c => `<option value="${c}">${c}</option>`).join('');
+  payerSelect.innerHTML = `<option value="我">${myIdentity === '我' ? '我 (記帳發起人)' : '記帳發起人'}</option>` + 
+    companions.map(c => `<option value="${c}">${c === myIdentity ? `${c} (我)` : c}</option>`).join('');
+  
+  // Auto-default the payer select to the current user's local identity
+  payerSelect.value = myIdentity;
 
   // Checklist of companions who splits
   let checkHtml = `
     <div class="split-checkbox-row">
       <label class="split-checkbox-label">
         <input type="checkbox" class="split-checkbox-input" value="我" checked onchange="recalculateSplitShares()">
-        我 (記帳發起人)
+        ${myIdentity === '我' ? '我 (記帳發起人)' : '記帳發起人'}
       </label>
       <span id="split-share-我" style="font-size: 11px; color: var(--accent);">NT$ 0</span>
     </div>
@@ -1208,7 +1233,7 @@ function populateSplitCheckboxSection() {
       <div class="split-checkbox-row">
         <label class="split-checkbox-label">
           <input type="checkbox" class="split-checkbox-input" value="${c}" checked onchange="recalculateSplitShares()">
-          ${c}
+          ${c === myIdentity ? `${c} (我)` : c}
         </label>
         <span id="split-share-${c}" style="font-size: 11px; color: var(--accent);">NT$ 0</span>
       </div>
