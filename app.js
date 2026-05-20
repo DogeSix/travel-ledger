@@ -844,10 +844,170 @@ function renderSettings() {
   `;
 
   settingsContainer.innerHTML = html;
+  
+  // 初始化旅程列表項目左右手勢滑動刪除功能
+  initSwipeToDelete();
 }
 
 // -------------------------------------------------------------
-// Haptic and Tactile Settings handlers removed.
+// Swipe to delete touch and pointer event gesture handlers for Trips
+function initSwipeToDelete() {
+  const containers = document.querySelectorAll('.swipe-container');
+  containers.forEach(container => {
+    const content = container.querySelector('.swipe-content');
+    const deleteBtn = container.querySelector('.swipe-action-delete');
+    if (!content || !deleteBtn) return;
+
+    let startX = 0;
+    let startY = 0;
+    let isSwiping = false;
+    const maxSwipe = -80; // 刪除按鈕寬度為 80px，所以最大往左滑動 80px
+
+    // Touch events for mobile compatibility
+    content.addEventListener('touchstart', (e) => {
+      // 關閉其他可能已開啟的滑動按鈕
+      document.querySelectorAll('.swipe-container.swipe-open').forEach(el => {
+        if (el !== container) {
+          const c = el.querySelector('.swipe-content');
+          const d = el.querySelector('.swipe-action-delete');
+          if (c && d) {
+            c.style.transition = 'transform 0.2s ease';
+            d.style.transition = 'transform 0.2s ease';
+            c.style.transform = 'translateX(0px)';
+            d.style.transform = 'translateX(100%)';
+          }
+          el.classList.remove('swipe-open');
+        }
+      });
+
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      isSwiping = false;
+      content.style.transition = 'none';
+      deleteBtn.style.transition = 'none';
+    }, { passive: true });
+
+    content.addEventListener('touchmove', (e) => {
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      const diffX = touchX - startX;
+      const diffY = touchY - startY;
+
+      // 當水平位移明顯大於垂直位移，判定為左右滑動
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+        isSwiping = true;
+        
+        if (diffX < 0) {
+          let moveX = diffX;
+          if (moveX < maxSwipe) {
+            // 超過 maxSwipe 之後，套用對數阻尼
+            moveX = maxSwipe + (moveX - maxSwipe) * 0.2;
+          }
+          
+          content.style.transform = `translateX(${moveX}px)`;
+          deleteBtn.style.transform = `translateX(calc(100% + ${moveX}px))`;
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+        }
+      }
+    }, { passive: true });
+
+    content.addEventListener('touchend', (e) => {
+      if (!isSwiping) return;
+
+      const changeX = e.changedTouches[0].clientX - startX;
+      content.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      deleteBtn.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+      // 往左滑動超過 35px 則自動 Snap 至開口狀態
+      if (changeX < -35) {
+        content.style.transform = `translateX(${maxSwipe}px)`;
+        deleteBtn.style.transform = `translateX(0px)`;
+        container.classList.add('swipe-open');
+      } else {
+        content.style.transform = `translateX(0px)`;
+        deleteBtn.style.transform = `translateX(100%)`;
+        container.classList.remove('swipe-open');
+      }
+      
+      startX = 0;
+      startY = 0;
+    });
+
+    // Pointer events compatibility for desktops/touch laptops
+    content.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      
+      startX = e.clientX;
+      startY = e.clientY;
+      isSwiping = false;
+      content.style.transition = 'none';
+      deleteBtn.style.transition = 'none';
+    });
+
+    content.addEventListener('pointermove', (e) => {
+      if (startX === 0) return;
+      
+      const diffX = e.clientX - startX;
+      const diffY = e.clientY - startY;
+
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+        isSwiping = true;
+        try { content.setPointerCapture(e.pointerId); } catch(err){}
+        
+        if (diffX < 0) {
+          let moveX = diffX;
+          if (moveX < maxSwipe) {
+            moveX = maxSwipe + (moveX - maxSwipe) * 0.2;
+          }
+          content.style.transform = `translateX(${moveX}px)`;
+          deleteBtn.style.transform = `translateX(calc(100% + ${moveX}px))`;
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+        }
+      }
+    });
+
+    content.addEventListener('pointerup', (e) => {
+      try { content.releasePointerCapture(e.pointerId); } catch(err){}
+      if (startX === 0) return;
+      
+      const changeX = e.clientX - startX;
+      if (isSwiping) {
+        content.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        deleteBtn.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+        if (changeX < -35) {
+          content.style.transform = `translateX(${maxSwipe}px)`;
+          deleteBtn.style.transform = `translateX(0px)`;
+          container.classList.add('swipe-open');
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+          container.classList.remove('swipe-open');
+        }
+      }
+      startX = 0;
+      startY = 0;
+    });
+
+    content.addEventListener('pointercancel', (e) => {
+      try { content.releasePointerCapture(e.pointerId); } catch(err){}
+      content.style.transition = 'transform 0.2s ease';
+      deleteBtn.style.transition = 'transform 0.2s ease';
+      content.style.transform = 'translateX(0px)';
+      deleteBtn.style.transform = 'translateX(100%)';
+      container.classList.remove('swipe-open');
+      startX = 0;
+      startY = 0;
+    });
+  });
+}
+
+// -------------------------------------------------------------
+// Swipe to delete touch and pointer event gesture handlers for Trips removed.
 
 
 // -------------------------------------------------------------
