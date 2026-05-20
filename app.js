@@ -773,11 +773,11 @@ function renderSettings() {
     `;
   }
 
-  // Add Version 3.0 Elegant Footer badge in Traditional Chinese
+  // Add Version 3.2 Premium Haptic Footer badge in Traditional Chinese
   html += `
     <div style="text-align: center; margin-top: 30px; margin-bottom: 20px; padding: 10px; opacity: 0.7;">
-      <div style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--secondary);">v3.0 行動優化尊爵版 📱</div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">支援觸覺震動回饋 · 防凍結順暢滑動 · 原生操作導航</div>
+      <div style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--secondary);">v3.2 極致觸感尊爵版 🚀</div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">雙重物理震動 & 聽覺 haptics · 金額焦點頂置 · 防凍結防遮擋</div>
       <div style="font-size: 9px; color: var(--text-muted); margin-top: 6px; opacity: 0.5;">Antigravity Design Team © 2026</div>
     </div>
   `;
@@ -1781,36 +1781,85 @@ function setupEventListeners() {
     });
   });
 
+  // Web Audio click sound synthesizer
+  let audioCtx = null;
+  function playClickSound() {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      // High-pitched short click: sweep from 1500Hz to 150Hz in 40ms for a very mechanical click feeling
+      osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.04);
+      
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime); // keep volume subtle and premium
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.04);
+    } catch (e) {
+      console.log('AudioContext haptic error:', e);
+    }
+  }
+
   // Keypad clicks setup
   document.querySelectorAll('.keypad-btn').forEach(btn => {
-    // Premium 120Hz Native Mobile feeling: bind touchstart and mousedown to completely eliminate 300ms delay,
-    // execute haptic vibrations, and dynamic visuals instantly
-    const handleKeypress = (e) => {
+    const val = btn.dataset.val;
+    let isPressed = false;
+
+    const pressStart = (e) => {
+      // Avoid multi-touch or multiple triggers
+      if (isPressed) return;
+      isPressed = true;
+      
       e.preventDefault(); // Stop secondary double-triggers between mousedown & touchstart
       
       // 1. Tactile haptic feedback (vibrate 15ms)
       if (navigator.vibrate) {
         navigator.vibrate(15);
       }
+      // Audio click haptic (crucial for iOS)
+      playClickSound();
       
       // 2. High-performance visual keypad-btn flash
-      const targetBtn = e.currentTarget;
-      targetBtn.classList.add('active-flash');
-      setTimeout(() => {
-        targetBtn.classList.remove('active-flash');
-      }, 100);
+      btn.classList.add('active-flash');
       
       // 3. Trigger logic
-      const val = targetBtn.dataset.val;
       if (val === 'save') {
         saveTransaction();
       } else {
         keypadTap(val);
       }
     };
-    
-    btn.addEventListener('touchstart', handleKeypress, { passive: false });
-    btn.addEventListener('mousedown', handleKeypress);
+
+    const pressEnd = (e) => {
+      if (!isPressed) return;
+      isPressed = false;
+      btn.classList.remove('active-flash');
+    };
+
+    // Bind touch events
+    btn.addEventListener('touchstart', pressStart, { passive: false });
+    btn.addEventListener('touchend', pressEnd, { passive: false });
+    btn.addEventListener('touchcancel', pressEnd, { passive: false });
+
+    // Bind mouse events
+    btn.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // Only left click
+      pressStart(e);
+    });
+    btn.addEventListener('mouseup', pressEnd);
+    btn.addEventListener('mouseleave', pressEnd);
   });
 }
 

@@ -1,5 +1,5 @@
 // Service Worker for Travel Expense Tracker (Offline First)
-const CACHE_NAME = 'travel-expense-v3';
+const CACHE_NAME = 'travel-expense-v4';
 const ASSETS = [
   './',
   './index.html',

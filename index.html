@@ -14,7 +14,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230b0b10'/><circle cx='50' cy='50' r='30' fill='none' stroke='%23ff7a45' stroke-width='8'/><path d='M35 50 L45 60 L65 40' fill='none' stroke='%23ffc069' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=3.2">
 </head>
 <body>
 
@@ -99,21 +99,48 @@
       </div>
       
       <div class="drawer-content">
-        <!-- Interactive Input Field -->
-        <div class="form-group">
+        <!-- Interactive Input Field (Moved directly above the custom keypad) -->
+        <div class="form-group" style="background-color: rgba(255, 255, 255, 0.01); border: 1px dashed var(--border-color); padding: 12px; border-radius: 20px; margin-bottom: 16px;">
           <label class="form-label" style="display: flex; justify-content: space-between;">
-            <span>輸入金額 (點擊代號切換幣別)</span>
-            <span style="color: var(--accent); cursor: pointer;" onclick="keypadBuffer = '0'; keypadTap('0');">歸零 C</span>
+            <span style="color: var(--secondary); font-weight: bold;">💰 輸入金額 (點擊代號切換幣別)</span>
+            <span style="color: var(--accent); cursor: pointer; font-weight: bold;" onclick="keypadBuffer = '0'; keypadTap('0');">歸零 C</span>
           </label>
-          <div class="drawer-input-row">
-            <span class="drawer-currency-badge" id="currency-badge-foreign" onclick="setInputType('foreign')">外幣</span>
+          <div class="drawer-input-row" style="margin-bottom: 8px;">
+            <span class="drawer-currency-badge" id="currency-badge-foreign" onclick="setInputType('foreign')" style="cursor: pointer;">外幣</span>
             <span style="color: var(--text-muted); margin-right: 8px;">|</span>
-            <span class="drawer-currency-badge" id="currency-badge-base" onclick="setInputType('base')" style="color: var(--text-muted);">台幣</span>
+            <span class="drawer-currency-badge" id="currency-badge-base" onclick="setInputType('base')" style="color: var(--text-muted); cursor: pointer;">台幣</span>
             <input type="text" class="drawer-input-amount" id="drawer-amt-foreign" value="0" readonly>
           </div>
           <!-- Auto Equivalent Display -->
-          <div class="drawer-equivalent-text" id="drawer-equivalent-val">
+          <div class="drawer-equivalent-text" id="drawer-equivalent-val" style="margin: 0; padding-right: 8px;">
             ≈ NT$ 0
+          </div>
+        </div>
+
+        <!-- Phone-optimised Custom Tactile Keypad -->
+        <div class="form-group">
+          <label class="form-label">專屬數字鍵盤 (防原生遮擋)</label>
+          <div class="keypad-container">
+            <button class="keypad-btn" data-val="1">1</button>
+            <button class="keypad-btn" data-val="2">2</button>
+            <button class="keypad-btn" data-val="3">3</button>
+            <button class="keypad-btn action" data-val="backspace" aria-label="退格">⌫</button>
+            
+            <button class="keypad-btn" data-val="4">4</button>
+            <button class="keypad-btn" data-val="5">5</button>
+            <button class="keypad-btn" data-val="6">6</button>
+            <button class="keypad-btn action" data-val="C" aria-label="清除">C</button>
+            
+            <button class="keypad-btn" data-val="7">7</button>
+            <button class="keypad-btn" data-val="8">8</button>
+            <button class="keypad-btn" data-val="9">9</button>
+            <button class="keypad-btn confirm" data-val="save">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            
+            <button class="keypad-btn" data-val=".">.</button>
+            <button class="keypad-btn" data-val="0">0</button>
+            <button class="keypad-btn" data-val="00">00</button>
           </div>
         </div>
 
@@ -191,33 +218,6 @@
           <input type="text" id="drawer-date-input" class="drawer-text-input" placeholder="YYYY-MM-DD HH:MM">
         </div>
 
-        <!-- Phone-optimised Custom Tactile Keypad -->
-        <div class="form-group">
-          <label class="form-label">專屬數字鍵盤 (防原生遮擋)</label>
-          <div class="keypad-container">
-            <button class="keypad-btn" data-val="1">1</button>
-            <button class="keypad-btn" data-val="2">2</button>
-            <button class="keypad-btn" data-val="3">3</button>
-            <button class="keypad-btn action" data-val="backspace" aria-label="退格">⌫</button>
-            
-            <button class="keypad-btn" data-val="4">4</button>
-            <button class="keypad-btn" data-val="5">5</button>
-            <button class="keypad-btn" data-val="6">6</button>
-            <button class="keypad-btn action" data-val="C" aria-label="清除">C</button>
-            
-            <button class="keypad-btn" data-val="7">7</button>
-            <button class="keypad-btn" data-val="8">8</button>
-            <button class="keypad-btn" data-val="9">9</button>
-            <button class="keypad-btn confirm" data-val="save">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </button>
-            
-            <button class="keypad-btn" data-val=".">.</button>
-            <button class="keypad-btn" data-val="0">0</button>
-            <button class="keypad-btn" data-val="00">00</button>
-          </div>
-        </div>
-
         <!-- Version 2.0 Tactile Action Buttons at bottom of Drawer -->
         <div class="drawer-btn-group">
           <button class="btn-save-tx" onclick="saveTransaction()">
@@ -249,6 +249,6 @@
   </div>
 
   <!-- Scripts -->
-  <script src="./app.js"></script>
+  <script src="./app.js?v=3.2"></script>
 </body>
 </html>
