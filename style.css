@@ -325,7 +325,7 @@ header h1 {
   font-family: var(--font-title);
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--secondary);
   margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
@@ -485,7 +485,7 @@ header h1 {
 
 .detail-label {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--secondary);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -630,6 +630,7 @@ header h1 {
   font-family: var(--font-title);
   font-weight: 700;
   font-size: 18px;
+  color: var(--secondary);
 }
 
 .ledger-actions {
@@ -837,6 +838,7 @@ header h1 {
   font-family: var(--font-title);
   font-weight: 700;
   font-size: 18px;
+  color: var(--secondary);
 }
 
 .drawer-close {
@@ -1292,6 +1294,7 @@ header h1 {
   font-family: var(--font-title);
   font-weight: 700;
   font-size: 18px;
+  color: var(--secondary);
   margin-bottom: 8px;
 }
 

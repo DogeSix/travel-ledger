@@ -8,7 +8,6 @@ let keypadBuffer = '0';
 let activeInputType = 'foreign'; // 'foreign' or 'base'
 let editingTransactionId = null;
 let activeCategoryFilter = null;
-let isHapticVibrateEnabled = localStorage.getItem('travel_haptic_enabled') !== 'false';
 
 // Categories configuration with icons and CSS class mappings
 const CATEGORIES = {
@@ -22,6 +21,24 @@ const CATEGORIES = {
   fee: { name: '手續保險', icon: '💼', class: 'cat-fee' },
   others: { name: '其他雜支', icon: '❓', class: 'cat-others' }
 };
+
+// Parse dates as local Timezone to prevent UTC offsets
+function parseLocalDate(dateStr) {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split(' ');
+  const dateParts = parts[0].split('-');
+  const year = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10) - 1;
+  const day = parseInt(dateParts[2], 10);
+  
+  let hrs = 0, mins = 0;
+  if (parts[1]) {
+    const timeParts = parts[1].split(':');
+    hrs = parseInt(timeParts[0], 10);
+    mins = parseInt(timeParts[1], 10);
+  }
+  return new Date(year, month, day, hrs, mins, 0, 0);
+}
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
@@ -232,18 +249,38 @@ function renderDashboard() {
   const remainingCashBase = Math.round(remainingCashForeign * trip.exchangeRate);
 
   // Daily Allowance Calculation
-  const start = new Date(trip.startDate);
-  const end = new Date(trip.endDate);
+  // 使用 parseLocalDate 精確解析日期，並將時間部分設為 0 以便進行日期比對
+  const start = parseLocalDate(trip.startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = parseLocalDate(trip.endDate);
+  end.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
   const totalDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
   let remainingDays = Math.round((end - today) / (1000 * 60 * 60 * 24)) + 1;
-  if (remainingDays < 1) remainingDays = 0; // trip ended
-  if (today < start) remainingDays = totalDays; // trip hasn't started yet
+  if (remainingDays < 1) remainingDays = 0; // 旅程已結束
+  if (today < start) remainingDays = totalDays; // 旅程尚未開始
 
-  const budgetLeft = totalBudget - totalSpentBase;
-  const dailyAllowanceBase = remainingDays > 0 ? Math.max(0, Math.round(budgetLeft / remainingDays)) : 0;
+  // 計算「今天以前的消費」與「今天的消費」
+  let spentBeforeTodayBase = 0;
+  let spentTodayBase = 0;
+
+  trip.transactions.forEach(t => {
+    const txDate = parseLocalDate(t.date);
+    txDate.setHours(0, 0, 0, 0);
+    
+    if (txDate < today) {
+      spentBeforeTodayBase += t.amountBase;
+    } else if (txDate.getTime() === today.getTime()) {
+      spentTodayBase += t.amountBase;
+    }
+  });
+
+  // 今日可用平攤預算 = (總預算 - 今天以前的消費) / 剩餘天數
+  const dailyBudgetLimitBase = remainingDays > 0 ? Math.max(0, Math.round((totalBudget - spentBeforeTodayBase) / remainingDays)) : 0;
+  // 今日剩餘可用額度 = 今日可用平攤預算 - 今日已消費
+  const dailyAllowanceBase = Math.max(0, dailyBudgetLimitBase - spentTodayBase);
   const dailyAllowanceForeign = Math.round(dailyAllowanceBase / trip.exchangeRate);
 
   // Spent by categories grouping in foreign currency
@@ -272,7 +309,7 @@ function renderDashboard() {
   // Card Payment vs Cash ratio
   const cardSpentBase = trip.transactions.filter(t => t.paymentMethod === 'card').reduce((acc, t) => acc + t.amountBase, 0);
   const splitSpentBase = trip.transactions.filter(t => t.paymentMethod === 'split').reduce((acc, t) => acc + t.amountBase, 0);
-  const cashSpentBase = totalSpentBase - cardSpentBase - splitSpentBase;
+  const cashSpentBase = trip.transactions.filter(t => t.paymentMethod === 'cash').reduce((acc, t) => acc + t.amountBase, 0);
 
   // Render dynamic dashboard HTML
   const dashHtml = `
@@ -344,7 +381,7 @@ function renderDashboard() {
           ${dailyAllowanceForeign.toLocaleString()} <span>${trip.foreignCurrency}</span>
         </div>
         <div class="detail-sub">
-          剩餘 ${remainingDays} 天，約合 NT$ ${dailyAllowanceBase.toLocaleString()}/天
+          平攤限額 NT$ ${dailyBudgetLimitBase.toLocaleString()}/天 · 今日已花 NT$ ${spentTodayBase.toLocaleString()}
         </div>
       </div>
     </div>
@@ -724,45 +761,6 @@ function renderSettings() {
         </div>
       </div>
 
-      <!-- Haptic Vibration & Tactile Feedback Setting Card -->
-      <div class="card">
-        <div class="card-title">觸覺震動與觸感回饋 ⚡</div>
-        <div class="settings-list">
-          <div class="settings-item" onclick="toggleHapticVibrate()">
-            <div class="settings-item-left">
-              <div class="settings-icon-box" style="color: var(--primary); background-color: rgba(255,122,69,0.08);">📳</div>
-              <div>
-                <div class="settings-label">物理震動回饋</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="haptic-status-desc">
-                  載入中...
-                </div>
-              </div>
-            </div>
-            <!-- Custom Styled Switch iOS lookalike -->
-            <label class="switch" onclick="event.stopPropagation()">
-              <input type="checkbox" id="haptic-toggle-cb" onchange="toggleHapticVibrate(this.checked)">
-              <span class="slider round"></span>
-            </label>
-          </div>
-          
-          <div class="settings-item" onclick="testHapticVibrate()" id="btn-test-haptic">
-            <div class="settings-item-left">
-              <div class="settings-icon-box accent">🎯</div>
-              <div>
-                <div class="settings-label">點擊測試裝置震動</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">點擊以測試實體震動效果 (Android / 支援設備)</div>
-              </div>
-            </div>
-            <span class="settings-value" style="color: var(--accent); font-weight: bold; background: rgba(54,207,201,0.06); padding: 4px 10px; border-radius: 10px;">測試震動</span>
-          </div>
-        </div>
-        
-        <!-- PWA Custom Diagnostics Device info box -->
-        <div class="haptic-diagnostics-box" id="haptic-diag-box" style="margin-top: 12px; padding: 12px; border-radius: 12px; background-color: rgba(255,255,255,0.02); border: 1px solid var(--border-color); font-size: 11px; line-height: 1.5; color: var(--text-muted);">
-          載入裝置診斷中...
-        </div>
-      </div>
-
       <!-- Backup Export and Import Section -->
       <div class="card">
         <div class="card-title">資料備份與搬移</div>
@@ -815,125 +813,42 @@ function renderSettings() {
             <div class="settings-item-left">
               <div class="settings-icon-box">📥</div>
               <div>
-                <div class="settings-label">匯入 JSON 備份還原</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">選擇 JSON 檔案以還原記帳紀錄</div>
+                <div class="settings-label">匯入 JSON 備份檔</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">選擇先前下載的 .json 檔以還原帳本</div>
               </div>
             </div>
           </div>
+
         </div>
       </div>
 
-      <!-- Danger Zone -->
-      <div class="card" style="border-color: rgba(255, 77, 79, 0.2);">
-        <div class="card-title" style="color: var(--danger);">危險區域</div>
-        <div class="settings-list">
-          <div class="settings-item" onclick="confirmDeleteTrip()" style="border: 1px solid rgba(255,77,79,0.15);">
-            <div class="settings-item-left">
-              <div class="settings-icon-box danger">🗑️</div>
-              <div>
-                <div class="settings-label" style="color: var(--danger);">刪除目前旅程</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">此動作將永久移除目前旅程內的所有帳目</div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- Danger Zone Card -->
+      <div class="card" style="border-color: rgba(255, 77, 79, 0.2); background: linear-gradient(135deg, #1f1315 0%, #0f0809 100%); margin-top: 16px;">
+        <div class="card-title" style="color: #ff4d4f;">危險區域 🚨</div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+          清除所有記帳與旅程資料。此操作不可逆，請確保已下載備份檔案。
+        </p>
+        <button class="btn-primary" onclick="if(confirm('⚠️ 警告：這將會清除本 App 內的所有旅程與記帳資料，且無法還原！\n確定要清除所有資料嗎？')) { localStorage.clear(); location.reload(); }" style="background: #ff4d4f; color: white; border: none; width: 100%; height: 40px; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);">
+          🚨 刪除 App 所有本機資料
+        </button>
       </div>
     `;
   }
 
-  // Add Version 3.2 Premium Haptic Footer badge in Traditional Chinese
+  // App Footer / Version
   html += `
-    <div style="text-align: center; margin-top: 30px; margin-bottom: 20px; padding: 10px; opacity: 0.7;">
-      <div style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--secondary);">v3.2 極致觸感尊爵版 🚀</div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">雙重物理震動 & 聽覺 haptics · 金額焦點頂置 · 防凍結防遮擋</div>
-      <div style="font-size: 9px; color: var(--text-muted); margin-top: 6px; opacity: 0.5;">Antigravity Design Team © 2026</div>
+    <div style="text-align: center; margin-top: 30px; margin-bottom: 15px; color: var(--text-muted); font-size: 11px;">
+      <p>✈️ 出國記帳 PWA 離線工具 v3.5</p>
+      <p style="margin-top: 5px; opacity: 0.6;">極致精簡 · 離線優先 · 智能平攤</p>
     </div>
   `;
 
   settingsContainer.innerHTML = html;
-
-  // Post-render initialization for Settings view elements
-  setTimeout(() => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const hapticStatusText = document.getElementById('haptic-status-desc');
-    const hapticCheckbox = document.getElementById('haptic-toggle-cb');
-    const hapticDiagBox = document.getElementById('haptic-diag-box');
-    
-    if (hapticCheckbox) hapticCheckbox.checked = isHapticVibrateEnabled;
-    
-    if (isIOS) {
-      if (hapticStatusText) hapticStatusText.innerText = "iOS 系統限制 (網頁無物理震動)";
-      if (hapticDiagBox) {
-        hapticDiagBox.innerHTML = `
-          <span style="color: var(--secondary); font-weight: bold;">💡 裝置診斷：Apple iOS 系統</span><br>
-          由於 Apple 官方的安全隱私政策，iOS 平台（包含 iPhone）的 Safari 與 LINE 內建瀏覽器並不支援網頁直接呼叫手機震動。
-          <br><br>
-          為了確保您的記帳手感，本工具已**自動開啟「高傳真機械式微型音效 click 回饋」**，每一次點擊自訂鍵盤都會發出極具質感的機械點擊聲，模擬真實觸控面板。
-        `;
-      }
-      const testHapticBtn = document.getElementById('btn-test-haptic');
-      if (testHapticBtn) {
-        testHapticBtn.style.opacity = '0.6';
-      }
-    } else {
-      const isVibrationSupported = 'vibrate' in navigator;
-      if (hapticStatusText) {
-        hapticStatusText.innerText = isHapticVibrateEnabled ? "開啟中 (每一次點擊都會產生觸覺震動)" : "已關閉";
-      }
-      if (hapticDiagBox) {
-        hapticDiagBox.innerHTML = `
-          <span style="color: var(--accent); font-weight: bold;">✅ 裝置診斷：支援物理震動 (${isVibrationSupported ? '已就緒' : '不支援'})</span><br>
-          目前偵測到您的瀏覽器具備 Web Vibration 支援！
-          <br><br>
-          我們為您啟用了**雙重 haptic 回饋系統**（短暫物理敲擊震動 + 微型音效）。這在 Android 實機、Chrome 瀏覽器及 LINE 中皆可提供像實體計算機般的紮實按壓手感。
-        `;
-      }
-    }
-  }, 20);
 }
 
 // -------------------------------------------------------------
-// Haptic and Tactile Settings handlers
+// Haptic and Tactile Settings handlers removed.
 
-function toggleHapticVibrate(checked) {
-  if (checked !== undefined) {
-    isHapticVibrateEnabled = checked;
-  } else {
-    isHapticVibrateEnabled = !isHapticVibrateEnabled;
-  }
-  localStorage.setItem('travel_haptic_enabled', isHapticVibrateEnabled ? 'true' : 'false');
-  
-  // Re-render settings to refresh text
-  renderSettings();
-  showToast(isHapticVibrateEnabled ? '📳 物理震動已開啟！' : '📴 物理震動已關閉');
-  
-  if (isHapticVibrateEnabled && navigator.vibrate) {
-    navigator.vibrate(20);
-  }
-}
-
-function testHapticVibrate() {
-  // 先確認 API 是否存在
-  if (!navigator.vibrate) {
-    showToast('⚠️ 您的瀏覽器不支援 Vibration API（若為 iPhone 屬正常現象）');
-    playClickSound();
-    return;
-  }
-  
-  // 嘗試觸發一組強烈且容易感知的震動
-  try {
-    const result = navigator.vibrate([80, 60, 80, 60, 120]);
-    if (result) {
-      showToast('⚡ 震動測試已觸發！若感受不到請檢查手機是否開啟靜音/勿擾模式');
-    } else {
-      showToast('⚠️ vibrate() 回傳 false — 震動可能被系統或瀏覽器攔截');
-      playClickSound();
-    }
-  } catch (err) {
-    showToast('❌ 震動 API 呼叫失敗：' + err.message);
-    playClickSound();
-  }
-}
 
 // -------------------------------------------------------------
 // Transaction Adding & Drawer Functionality
@@ -2531,46 +2446,57 @@ function setupEventListeners() {
 
   document.querySelectorAll('.keypad-btn').forEach(btn => {
     const val = btn.dataset.val;
+    let startX = 0;
+    let startY = 0;
+    let isMoving = false;
 
     // 視覺回饋：pointerdown 即時高亮（不阻斷預設行為，不阻斷滾動）
-    btn.addEventListener('pointerdown', () => {
+    btn.addEventListener('pointerdown', (e) => {
       btn.classList.add('active-flash');
+      startX = e.clientX;
+      startY = e.clientY;
+      isMoving = false;
     });
+
+    btn.addEventListener('pointermove', (e) => {
+      if (startX === 0 && startY === 0) return;
+      const diffX = Math.abs(e.clientX - startX);
+      const diffY = Math.abs(e.clientY - startY);
+      // 如果滑動距離大於 10px，則判定為滑動
+      if (diffX > 10 || diffY > 10) {
+        isMoving = true;
+        btn.classList.remove('active-flash');
+      }
+    });
+
     btn.addEventListener('pointerup', () => {
       btn.classList.remove('active-flash');
+      startX = 0;
+      startY = 0;
     });
     btn.addEventListener('pointercancel', () => {
       btn.classList.remove('active-flash');
+      startX = 0;
+      startY = 0;
     });
     btn.addEventListener('pointerleave', () => {
       btn.classList.remove('active-flash');
+      startX = 0;
+      startY = 0;
     });
 
-    // 核心操作：click 觸發全部邏輯（震動 + 音效 + 按鍵輸入）
-    // click 在所有平台上都是合法 User Activation，搭配 touch-action:manipulation 無延遲
+    // 核心操作：click 觸發全部邏輯（音效 + 按鍵輸入）
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      // 1. 物理震動回饋（加大時長至 30-50ms，確保可感知）
-      if (isHapticVibrateEnabled && navigator.vibrate) {
-        try {
-          if (val === 'save') {
-            // 成功確認的節奏震動
-            navigator.vibrate([50, 40, 30]);
-          } else if (val === 'backspace' || val === 'C') {
-            // 刪除警示的雙重震動
-            navigator.vibrate([30, 30, 30]);
-          } else {
-            // 數字鍵清脆短震（30ms 是可明確感知的最低時長）
-            navigator.vibrate(30);
-          }
-        } catch (err) {
-          // 震動 API 不支援時靜默失敗
-        }
+      // 如果判定為滑動，則略過點擊（防止誤觸數字）
+      if (isMoving) {
+        isMoving = false;
+        return;
       }
 
-      // 2. 機械式音效（所有裝置通用，iOS 專屬替代方案）
+      // 1. 機械式音效（所有裝置通用）
       playClickSound();
 
       // 3. 按鍵輸入處理
