@@ -26,8 +26,15 @@ const CATEGORIES = {
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
   setupEventListeners();
+  
+  // Intercept and handle room queries for cloud syncing (Lightsplit clone)
+  if (checkURLRoomQuery()) {
+    return; // Stop standard view setup, as checkURLRoomQuery handles asynchronous loading UI
+  }
+  
   switchView('dashboard');
   renderApp();
+  startCloudSyncPolling(); // Start background sync polling if active trip is connected
   
   // Register service worker if available for PWA support
   if ('serviceWorker' in navigator) {
@@ -116,6 +123,12 @@ function saveData() {
   localStorage.setItem('travel_trips', JSON.stringify(trips));
   if (activeTripId) {
     localStorage.setItem('travel_active_trip_id', activeTripId);
+    
+    // Auto sync push to cloud if active trip is synced
+    const trip = getActiveTrip();
+    if (trip && trip.cloudRoomId) {
+      syncPushCloud();
+    }
   } else {
     localStorage.removeItem('travel_active_trip_id');
   }
@@ -133,7 +146,8 @@ function renderApp() {
   // Render header trip title
   const tripBadge = document.getElementById('current-trip-badge');
   if (trip) {
-    tripBadge.innerHTML = `✈️ ${trip.name}`;
+    const syncDot = trip.cloudRoomId ? `<span class="sync-indicator-dot" title="雲端即時同步中"></span>` : '';
+    tripBadge.innerHTML = `✈️ ${trip.name}${syncDot}`;
     document.getElementById('fab-add').style.display = 'flex';
   } else {
     tripBadge.innerHTML = `➕ 點擊新增旅程`;
@@ -494,6 +508,44 @@ function renderSplitBill() {
   const companions = trip.companions || [];
   const settlements = calculateSettlements(trip);
 
+  const isSynced = !!trip.cloudRoomId;
+  const syncRoomId = trip.cloudRoomId || '';
+  
+  let cloudCardHtml = '';
+  if (isSynced) {
+    cloudCardHtml = `
+      <!-- Cloud Sync Active State Card -->
+      <div class="card" style="border-color: rgba(7, 193, 96, 0.3); background: linear-gradient(135deg, #0e1e13 0%, #060e0a 100%);">
+        <div class="card-title" style="color: #07c160; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+          <span>💬</span> LINE 雲端即時同步中
+          <span style="font-size: 11px; background: rgba(7,193,96,0.1); color: #07c160; padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-left: auto;">房號: ${syncRoomId}</span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+          此帳本已成功連接雲端！好友在 LINE 內點擊下方專屬連結即可加入。往後任何人的新增修改都會在背景秒級自動同步更新，操作體驗與 Lightsplit 完全一致！
+        </p>
+        <button class="btn-primary" onclick="shareActiveTripToLINE()" style="background: #07c160; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; border-radius: 14px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(7, 193, 96, 0.25);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          透過 LINE 分享/邀請好友加入
+        </button>
+      </div>
+    `;
+  } else {
+    cloudCardHtml = `
+      <!-- Cloud Sync Inactive State Card -->
+      <div class="card" style="border-color: rgba(255, 255, 255, 0.05); background: linear-gradient(135deg, #12121c 0%, #0c0c12 100%);">
+        <div class="card-title" style="color: var(--secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+          <span>💬</span> 共同記帳與 LINE 邀請 (像 Lightsplit)
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+          想和旅伴一起記帳嗎？點擊下方按鈕，一鍵開啟雲端多人共同記帳！系統會為您開啟專屬雲端房號，並能產生專屬連結，讓好友點擊即可加入，任何消費秒級同步！
+        </p>
+        <button class="btn-primary" onclick="enableCloudSync()" style="background: linear-gradient(135deg, var(--primary) 0%, #ff4d4f 100%); color: white; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; border-radius: 14px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 122, 69, 0.25);">
+          🌐 開啟 Lightsplit 雲端同步共同記帳
+        </button>
+      </div>
+    `;
+  }
+
   let html = `
     <!-- Split Bill Balance Card -->
     <div class="card split-summary-card">
@@ -522,6 +574,8 @@ function renderSplitBill() {
         `).join('')}
       </div>
     </div>
+
+    ${cloudCardHtml}
 
     <!-- Companions management -->
     <div class="card">
@@ -742,6 +796,10 @@ function showAddExpenseDrawer() {
   
   // Reset Split bill UI
   document.getElementById('split-bill-section').style.display = 'none';
+  
+  // Hide delete button for new entries
+  const btnDelete = document.getElementById('btn-delete-tx');
+  if (btnDelete) btnDelete.style.display = 'none';
   
   // Display Drawer
   document.getElementById('drawer-overlay').classList.add('active');
@@ -1003,7 +1061,8 @@ function saveTransaction() {
     if (index !== -1) {
       trip.transactions[index] = {
         ...trip.transactions[index],
-        date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith
+        date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith,
+        updatedAt: Date.now()
       };
       showToast('✅ 交易修改成功！');
     }
@@ -1011,7 +1070,8 @@ function saveTransaction() {
     // New transaction
     const newTx = {
       id: 'tx-' + Date.now(),
-      date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith
+      date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith,
+      updatedAt: Date.now()
     };
     trip.transactions.push(newTx);
     showToast('📝 記帳成功！');
@@ -1073,6 +1133,10 @@ function editTransaction(txId) {
     toggleSplitSection(false);
   }
   
+  // Show delete button for editing existing entries
+  const btnDelete = document.getElementById('btn-delete-tx');
+  if (btnDelete) btnDelete.style.display = 'flex';
+  
   // Show drawer
   document.getElementById('drawer-overlay').classList.add('active');
   document.getElementById('drawer').classList.add('active');
@@ -1124,7 +1188,7 @@ function removeCompanion(name) {
   }
 }
 
-// Netting Algorithm for Settlement
+// Netting Algorithm for Settlement - Fully protected from floating-point infinite loops
 function calculateSettlements(trip) {
   const companions = trip.companions || [];
   const members = ['我', ...companions];
@@ -1138,7 +1202,7 @@ function calculateSettlements(trip) {
     if (t.paymentMethod === 'split') {
       const payer = t.payer || '我';
       const splitWith = t.splitWith || ['我'];
-      const totalAmt = t.amountForeign; // Calculate settlements in foreign/local currency directly!
+      const totalAmt = t.amountForeign || 0; // Calculate settlements in foreign/local currency directly!
       
       if (balances[payer] === undefined) balances[payer] = 0;
       
@@ -1146,11 +1210,13 @@ function calculateSettlements(trip) {
       balances[payer] += totalAmt;
       
       // Debited equally
-      const share = totalAmt / splitWith.length;
-      splitWith.forEach(person => {
-        if (balances[person] === undefined) balances[person] = 0;
-        balances[person] -= share;
-      });
+      if (splitWith.length > 0) {
+        const share = totalAmt / splitWith.length;
+        splitWith.forEach(person => {
+          if (balances[person] === undefined) balances[person] = 0;
+          balances[person] -= share;
+        });
+      }
     }
   });
 
@@ -1160,6 +1226,8 @@ function calculateSettlements(trip) {
   
   Object.keys(balances).forEach(person => {
     const bal = balances[person];
+    if (isNaN(bal) || !isFinite(bal)) return; // Skip invalid NaN or Infinity values
+    
     if (bal > 0.5) {
       creditors.push({ name: person, balance: bal });
     } else if (bal < -0.5) {
@@ -1176,12 +1244,35 @@ function calculateSettlements(trip) {
   
   let cIdx = 0;
   let dIdx = 0;
+  let iterations = 0; // Safe iteration counter guard
   
   while (cIdx < creditors.length && dIdx < debtors.length) {
+    iterations++;
+    if (iterations > 1000) {
+      console.warn("Settlement calculation exceeded iteration safety limit.");
+      break; // Force break to prevent main-thread freeze
+    }
+    
     const cred = creditors[cIdx];
     const debt = debtors[dIdx];
     
+    // Safety check for empty or finished balances
+    if (cred.balance < 0.1) {
+      cIdx++;
+      continue;
+    }
+    if (debt.balance < 0.1) {
+      dIdx++;
+      continue;
+    }
+    
     const settleAmt = Math.min(cred.balance, debt.balance);
+    if (settleAmt < 0.01) {
+      cIdx++;
+      dIdx++;
+      continue; // Skip negligible amounts to prevent sub-precision locks
+    }
+
     settlements.push({
       debtor: debt.name,
       creditor: cred.name,
@@ -1485,6 +1576,7 @@ function switchTrip(tripId) {
   activeTripId = tripId;
   saveData();
   renderApp();
+  startCloudSyncPolling(); // Restart polling for the active trip
   showToast('🗺️ 已切換旅程記帳本');
 }
 
@@ -1684,4 +1776,332 @@ function showToast(msg) {
   setTimeout(() => {
     toast.classList.remove('active');
   }, 2200);
+}
+
+// -------------------------------------------------------------
+// Version 2.0 Collaborative Syncing & Lightsplit Engine (LINE integration)
+
+function deleteTransactionFromDrawer() {
+  const trip = getActiveTrip();
+  if (!trip || !editingTransactionId) return;
+  
+  if (confirm('⚠️ 確定要刪除這筆記帳紀錄嗎？此動作將無法復原。')) {
+    if (!trip.deletedTxIds) trip.deletedTxIds = [];
+    trip.deletedTxIds.push(editingTransactionId);
+    
+    trip.transactions = trip.transactions.filter(t => t.id !== editingTransactionId);
+    
+    saveData();
+    closeDrawer();
+    renderApp();
+    showToast('🗑️ 已成功刪除該筆消費');
+  }
+}
+
+async function enableCloudSync() {
+  const trip = getActiveTrip();
+  if (!trip) return;
+  
+  // Generate a random 6-character room code
+  const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+  trip.cloudRoomId = roomId;
+  
+  showToast('🌐 正在開啟雲端即時同步...');
+  
+  // Push the current trip to the cloud
+  const success = await syncPushCloud();
+  if (success) {
+    saveData();
+    renderApp();
+    startCloudSyncPolling(); // Start polling immediately
+    alert(`🎉 成功開啟 Lightsplit 雲端同步！\n您的專屬房號為：${roomId}\n\n現在您可以點擊「透過 LINE 分享」邀請好友共同記帳！`);
+  } else {
+    // Rollback
+    trip.cloudRoomId = null;
+    alert('❌ 無法連接到雲端伺服器，請檢查您的網路連線後再試一次！');
+  }
+}
+
+let isPushing = false;
+async function syncPushCloud() {
+  const trip = getActiveTrip();
+  if (!trip || !trip.cloudRoomId) return false;
+  
+  if (isPushing) return false;
+  isPushing = true;
+  
+  const roomId = trip.cloudRoomId;
+  const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(trip)
+    });
+    
+    if (response.ok) {
+      console.log(`Cloud sync push success for room ${roomId}`);
+      isPushing = false;
+      return true;
+    } else {
+      console.error(`Cloud sync push failed with status: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Cloud sync push network error:', error);
+  }
+  
+  isPushing = false;
+  return false;
+}
+
+let isPulling = false;
+async function syncPullCloud(quiet = false) {
+  const trip = getActiveTrip();
+  if (!trip || !trip.cloudRoomId) return false;
+  
+  if (isPulling) return false;
+  isPulling = true;
+  
+  const roomId = trip.cloudRoomId;
+  const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
+  
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const cloudTrip = await response.json();
+      if (cloudTrip && cloudTrip.id) {
+        // Merge cloud data into local trip
+        let hasChanges = false;
+        
+        // 1. Merge Companions (Union)
+        const localCompanions = trip.companions || [];
+        const cloudCompanions = cloudTrip.companions || [];
+        const mergedCompanions = Array.from(new Set([...localCompanions, ...cloudCompanions]));
+        if (JSON.stringify(trip.companions) !== JSON.stringify(mergedCompanions)) {
+          trip.companions = mergedCompanions;
+          hasChanges = true;
+        }
+        
+        // 2. Merge Deleted Transaction IDs (Union)
+        const localDeleted = trip.deletedTxIds || [];
+        const cloudDeleted = cloudTrip.deletedTxIds || [];
+        const mergedDeleted = Array.from(new Set([...localDeleted, ...cloudDeleted]));
+        if (JSON.stringify(trip.deletedTxIds) !== JSON.stringify(mergedDeleted)) {
+          trip.deletedTxIds = mergedDeleted;
+          hasChanges = true;
+        }
+        
+        // 3. Merge Transactions
+        const txMap = {};
+        const localTx = trip.transactions || [];
+        const cloudTx = cloudTrip.transactions || [];
+        
+        // Populate map with local transactions (excluding those marked as deleted)
+        localTx.forEach(t => {
+          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) return;
+          txMap[t.id] = t;
+        });
+        
+        // Merge cloud transactions
+        cloudTx.forEach(t => {
+          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) return;
+          const local = txMap[t.id];
+          if (!local) {
+            txMap[t.id] = t;
+            hasChanges = true;
+          } else {
+            // Compare updatedAt
+            const localTime = local.updatedAt || 0;
+            const cloudTime = t.updatedAt || 0;
+            if (cloudTime > localTime) {
+              txMap[t.id] = t;
+              hasChanges = true;
+            }
+          }
+        });
+        
+        // Re-filter local transactions that might have been deleted in cloud
+        const finalTransactions = [];
+        Object.values(txMap).forEach(t => {
+          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) {
+            hasChanges = true;
+            return;
+          }
+          finalTransactions.push(t);
+        });
+        
+        if (trip.transactions.length !== finalTransactions.length || hasChanges) {
+          trip.transactions = finalTransactions;
+          hasChanges = true;
+        }
+        
+        // 4. Merge Cash Withdrawals
+        const localWithdrawals = trip.cashWithdrawals || [];
+        const cloudWithdrawals = cloudTrip.cashWithdrawals || [];
+        const withdrawalMap = {};
+        localWithdrawals.forEach(w => { withdrawalMap[w.id] = w; });
+        cloudWithdrawals.forEach(w => {
+          if (!withdrawalMap[w.id]) {
+            withdrawalMap[w.id] = w;
+            hasChanges = true;
+          }
+        });
+        
+        if (trip.cashWithdrawals.length !== Object.keys(withdrawalMap).length) {
+          trip.cashWithdrawals = Object.values(withdrawalMap);
+          hasChanges = true;
+        }
+        
+        // 5. Merge basic attributes if changed
+        if (trip.name !== cloudTrip.name) { trip.name = cloudTrip.name; hasChanges = true; }
+        if (trip.budget !== cloudTrip.budget) { trip.budget = cloudTrip.budget; hasChanges = true; }
+        if (trip.exchangeRate !== cloudTrip.exchangeRate) { trip.exchangeRate = cloudTrip.exchangeRate; hasChanges = true; }
+        if (trip.startDate !== cloudTrip.startDate) { trip.startDate = cloudTrip.startDate; hasChanges = true; }
+        if (trip.endDate !== cloudTrip.endDate) { trip.endDate = cloudTrip.endDate; hasChanges = true; }
+        
+        if (hasChanges) {
+          // Save directly to localStorage bypassing saveData auto-push
+          localStorage.setItem('travel_trips', JSON.stringify(trips));
+          renderApp();
+          if (!quiet) showToast('🔄 帳本已與雲端同步更新');
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Cloud sync pull network error:', error);
+  }
+  
+  isPulling = false;
+  return true;
+}
+
+let syncIntervalId = null;
+function startCloudSyncPolling() {
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+    syncIntervalId = null;
+  }
+  
+  const trip = getActiveTrip();
+  if (trip && trip.cloudRoomId) {
+    console.log(`Starting cloud sync background polling for room: ${trip.cloudRoomId}`);
+    // Run initial pull silently
+    syncPullCloud(true);
+    
+    // Poll every 8 seconds
+    syncIntervalId = setInterval(() => {
+      syncPullCloud(true);
+    }, 8000);
+  }
+}
+
+function checkURLRoomQuery() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomId = urlParams.get('room');
+  
+  if (roomId) {
+    // Render beautiful premium fullscreen loader screen over app viewport
+    const loader = document.createElement('div');
+    loader.id = 'cloud-loading-screen';
+    loader.style = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100dvh;
+      background-color: #0b0b10;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #f0f0f5;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    `;
+    loader.innerHTML = `
+      <div style="font-size: 48px; margin-bottom: 24px; animation: pulse 1.5s infinite ease-in-out;">✈️</div>
+      <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, #fff 30%, #ffc069 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">正在連線並同步 LINE 共同記帳本...</h3>
+      <p style="font-size: 13px; color: #8c8c9e;">房號：${roomId} · 請稍候</p>
+      <div style="margin-top: 30px; width: 40px; height: 40px; border: 3px solid rgba(255, 122, 69, 0.1); border-top-color: #ff7a45; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+      </style>
+    `;
+    document.body.appendChild(loader);
+    
+    // Connect and retrieve cloud data asynchronously
+    const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
+    fetch(url)
+      .then(response => {
+        if (!response.ok) throw new Error('Shared room not found');
+        return response.json();
+      })
+      .then(cloudTrip => {
+        if (cloudTrip && cloudTrip.id) {
+          // Merge or add to our local trips
+          const existingIndex = trips.findIndex(t => t.id === cloudTrip.id);
+          if (existingIndex !== -1) {
+            trips[existingIndex] = cloudTrip;
+          } else {
+            trips.push(cloudTrip);
+          }
+          activeTripId = cloudTrip.id;
+          saveData();
+          
+          // Clear query params so refresh doesn't trigger loading screen again
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          loader.remove();
+          
+          switchView('dashboard');
+          renderApp();
+          startCloudSyncPolling();
+          showToast('✈️ 成功加入共同記帳群組！');
+        } else {
+          throw new Error('Invalid trip data structure');
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        loader.innerHTML = `
+          <div style="font-size: 48px; margin-bottom: 24px;">⚠️</div>
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #ff4d4f;">連線共同記帳本失敗</h3>
+          <p style="font-size: 13px; color: #8c8c9e; max-width: 280px; text-align: center; margin-bottom: 24px;">找不到該記帳房號，或者網路連線中斷。請確認分享連結是否正確。</p>
+          <button class="btn-primary" onclick="window.location.replace(window.location.pathname)" style="background-color: rgba(255,255,255,0.05); color: #8c8c9e; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; padding: 10px 20px; border-radius: 12px; cursor: pointer;">返回我的記帳本</button>
+        `;
+      });
+      
+    return true;
+  }
+  
+  return false;
+}
+
+function shareActiveTripToLINE() {
+  const trip = getActiveTrip();
+  if (!trip || !trip.cloudRoomId) return;
+  
+  const shareUrl = window.location.origin + window.location.pathname + '?room=' + trip.cloudRoomId;
+  const shareText = `我建立了一個出國記帳本「${trip.name}」，邀請你加入共同記帳，旅伴即時拆帳超方便！\n點擊下方連結即可加入：\n${shareUrl}`;
+  
+  if (navigator.share) {
+    navigator.share({
+      title: '出國記帳旅伴分享',
+      text: shareText,
+      url: shareUrl
+    }).catch(err => {
+      console.log('Native sharing cancelled/failed:', err);
+      // Fallback
+      const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+      window.open(lineUrl, '_blank');
+    });
+  } else {
+    // Fallback to direct LINE sharing
+    const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+    window.open(lineUrl, '_blank');
+  }
 }

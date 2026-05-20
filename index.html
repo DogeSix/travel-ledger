@@ -212,10 +212,20 @@
           </div>
         </div>
 
-        <!-- Save Button (Optional backup if they don't click check icon) -->
-        <button class="btn-save" onclick="saveTransaction()">
-          💾 儲存並記錄帳目
-        </button>
+        <!-- Version 2.0 Tactile Action Buttons at bottom of Drawer -->
+        <div class="drawer-btn-group">
+          <button class="btn-save-tx" onclick="saveTransaction()">
+            💾 儲存並記錄帳目
+          </button>
+          <div class="drawer-secondary-btns">
+            <button class="btn-delete-tx" id="btn-delete-tx" onclick="deleteTransactionFromDrawer()" style="display: none;">
+              🗑️ 刪除此筆
+            </button>
+            <button class="btn-cancel-tx" onclick="closeDrawer()">
+              ✕ 取消返回
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
