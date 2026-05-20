@@ -1086,6 +1086,7 @@ header h1 {
   padding: 12px;
   border-radius: 20px;
   border: 1px solid var(--border-color);
+  touch-action: pan-y; /* 允許手指在鍵盤區域垂直滑動以捲動 Drawer 內容 */
 }
 
 .keypad-btn {

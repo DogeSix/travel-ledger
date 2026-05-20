@@ -913,14 +913,25 @@ function toggleHapticVibrate(checked) {
 }
 
 function testHapticVibrate() {
-  if (navigator.vibrate) {
-    showToast('⚡ 觸覺震動測試中...');
-    navigator.vibrate([30, 40, 30]);
-  } else {
-    showToast('⚠️ 您的裝置目前不支援物理震動功能');
-    if (typeof playClickSound === 'function') {
+  // 先確認 API 是否存在
+  if (!navigator.vibrate) {
+    showToast('⚠️ 您的瀏覽器不支援 Vibration API（若為 iPhone 屬正常現象）');
+    playClickSound();
+    return;
+  }
+  
+  // 嘗試觸發一組強烈且容易感知的震動
+  try {
+    const result = navigator.vibrate([80, 60, 80, 60, 120]);
+    if (result) {
+      showToast('⚡ 震動測試已觸發！若感受不到請檢查手機是否開啟靜音/勿擾模式');
+    } else {
+      showToast('⚠️ vibrate() 回傳 false — 震動可能被系統或瀏覽器攔截');
       playClickSound();
     }
+  } catch (err) {
+    showToast('❌ 震動 API 呼叫失敗：' + err.message);
+    playClickSound();
   }
 }
 
@@ -2501,67 +2512,73 @@ function setupEventListeners() {
     });
   });
 
-  // Custom Keypad: Full haptic vibration fix
-  // 重要修復說明：
-  // - 行動瀏覽器中，navigator.vibrate() 需要來自「合法使用者手勢」才能觸發
-  // - pointerdown + e.preventDefault() 會導致 Chrome Android 不將其視為合法手勢
-  // - 解決方案：使用 touchstart(passive:false) 做手機震動，click 做電腦端備援
-  //   同時使用 pointerdown(不呼叫 preventDefault) 做視覺回饋
+  // =====================================================
+  // 自訂鍵盤觸控最終修正版 v3.3
+  // =====================================================
+  // 核心原理：
+  // 1. 不再使用 touchstart + preventDefault（它會阻斷原生滾動與震動 API）
+  // 2. CSS 已設定 touch-action: manipulation，消除 300ms click 延遲
+  // 3. 使用 click 事件觸發全部操作（click 是最可靠的 User Activation，能觸發震動）
+  // 4. 使用 pointerdown/up 做即時視覺回饋（不呼叫 preventDefault，不阻斷滾動）
+  // 5. 鍵盤容器允許垂直滑動（touch-action: pan-y），解決無法向下捲動的問題
+  // =====================================================
+
+  // 讓鍵盤容器允許垂直滑動穿透
+  const keypadContainer = document.querySelector('.keypad-container');
+  if (keypadContainer) {
+    keypadContainer.style.touchAction = 'pan-y';
+  }
+
   document.querySelectorAll('.keypad-btn').forEach(btn => {
     const val = btn.dataset.val;
-    let hasTriggered = false; // 防止 touchstart 和 click 重複觸發
 
-    // 核心處理函數
-    const handleKeyAction = () => {
-      // 1. 機械式音效 (所有裝置通用)
-      playClickSound();
+    // 視覺回饋：pointerdown 即時高亮（不阻斷預設行為，不阻斷滾動）
+    btn.addEventListener('pointerdown', () => {
+      btn.classList.add('active-flash');
+    });
+    btn.addEventListener('pointerup', () => {
+      btn.classList.remove('active-flash');
+    });
+    btn.addEventListener('pointercancel', () => {
+      btn.classList.remove('active-flash');
+    });
+    btn.addEventListener('pointerleave', () => {
+      btn.classList.remove('active-flash');
+    });
 
-      // 2. 物理震動回饋 (Android / 支援設備)
+    // 核心操作：click 觸發全部邏輯（震動 + 音效 + 按鍵輸入）
+    // click 在所有平台上都是合法 User Activation，搭配 touch-action:manipulation 無延遲
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 1. 物理震動回饋（加大時長至 30-50ms，確保可感知）
       if (isHapticVibrateEnabled && navigator.vibrate) {
         try {
           if (val === 'save') {
-            navigator.vibrate([40, 30, 20]);
+            // 成功確認的節奏震動
+            navigator.vibrate([50, 40, 30]);
           } else if (val === 'backspace' || val === 'C') {
-            navigator.vibrate([15, 20, 15]);
+            // 刪除警示的雙重震動
+            navigator.vibrate([30, 30, 30]);
           } else {
-            navigator.vibrate(12);
+            // 數字鍵清脆短震（30ms 是可明確感知的最低時長）
+            navigator.vibrate(30);
           }
         } catch (err) {
-          console.warn('Vibration failed:', err);
+          // 震動 API 不支援時靜默失敗
         }
       }
 
-      // 3. 視覺回饋
-      btn.classList.add('active-flash');
-      setTimeout(() => btn.classList.remove('active-flash'), 120);
+      // 2. 機械式音效（所有裝置通用，iOS 專屬替代方案）
+      playClickSound();
 
-      // 4. 輸入邏輯
+      // 3. 按鍵輸入處理
       if (val === 'save') {
         saveTransaction();
       } else {
         keypadTap(val);
       }
-    };
-
-    // 方法 A：touchstart — 手機觸控的第一優先級（最快回應、合法手勢、可觸發震動）
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault(); // 防止 300ms 延遲和後續 click 事件
-      if (hasTriggered) return;
-      hasTriggered = true;
-      handleKeyAction();
-      // 短暫延遲後重設旗標，確保快速連續點擊也能正常觸發
-      setTimeout(() => { hasTriggered = false; }, 80);
-    }, { passive: false });
-
-    // 方法 B：click — 桌面端滑鼠點擊備援
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (hasTriggered) {
-        // 已被 touchstart 處理過了，跳過
-        hasTriggered = false;
-        return;
-      }
-      handleKeyAction();
     });
   });
 }
