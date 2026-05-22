@@ -88,7 +88,10 @@ function loadData() {
             paymentMethod: 'cash',
             desc: '一蘭拉麵早餐',
             payer: '我',
-            splitWith: ['我', '阿明', '小華']
+            splitWith: ['我', '阿明', '小華'],
+            locationName: '一蘭拉麵 新宿東口店',
+            lat: 35.6909,
+            lng: 139.7003
           },
           {
             id: 't2',
@@ -99,7 +102,10 @@ function loadData() {
             paymentMethod: 'card',
             desc: '東京鐵塔門票',
             payer: '阿明',
-            splitWith: ['我', '阿明', '小華']
+            splitWith: ['我', '阿明', '小華'],
+            locationName: '東京鐵塔展望台',
+            lat: 35.6586,
+            lng: 139.7454
           },
           {
             id: 't3',
@@ -110,7 +116,10 @@ function loadData() {
             paymentMethod: 'card',
             desc: '藥妝店美妝藥品',
             payer: '我',
-            splitWith: ['我']
+            splitWith: ['我'],
+            locationName: '松本清 新宿三丁目店',
+            lat: 35.6917,
+            lng: 139.7015
           },
           {
             id: 't4',
@@ -121,7 +130,10 @@ function loadData() {
             paymentMethod: 'card',
             desc: '新宿新宿歌舞伎町設計酒店',
             payer: '我',
-            splitWith: ['我', '阿明', '小華']
+            splitWith: ['我', '阿明', '小華'],
+            locationName: '新宿歌舞伎町設計酒店',
+            lat: 35.6938,
+            lng: 139.7035
           },
           {
             id: 't5',
@@ -132,7 +144,10 @@ function loadData() {
             paymentMethod: 'cash',
             desc: 'Skyliner 京成電鐵特急',
             payer: '小華',
-            splitWith: ['我', '阿明', '小華']
+            splitWith: ['我', '阿明', '小華'],
+            locationName: '成田機場 第一航廈',
+            lat: 35.7720,
+            lng: 140.3929
           },
           {
             id: 't6',
@@ -143,7 +158,10 @@ function loadData() {
             paymentMethod: 'split',
             desc: '築地市場奢華壽司饗宴',
             payer: '阿明',
-            splitWith: ['我', '阿明', '小華']
+            splitWith: ['我', '阿明', '小華'],
+            locationName: '築地市場 青空三代目',
+            lat: 35.6655,
+            lng: 139.7702
           },
           {
             id: 't7',
@@ -154,7 +172,10 @@ function loadData() {
             paymentMethod: 'cash',
             desc: '淺草雷門人形燒伴手禮',
             payer: '我',
-            splitWith: ['我']
+            splitWith: ['我'],
+            locationName: '淺草雷門 人形燒伴手禮店',
+            lat: 35.7110,
+            lng: 139.7967
           }
         ],
         cashWithdrawals: [
@@ -186,7 +207,12 @@ function saveData() {
 
 // Get active trip object
 function getActiveTrip() {
-  return trips.find(t => t.id === activeTripId);
+  const trip = trips.find(t => t.id === activeTripId);
+  if (trip) {
+    if (!trip.liveTrack) trip.liveTrack = [];
+    if (!trip.unlockedGrids) trip.unlockedGrids = {};
+  }
+  return trip;
 }
 
 // Render dynamic components of the application
@@ -208,12 +234,21 @@ function renderApp() {
   renderLedger();
   renderSplitBill();
   renderSettings();
+  renderMap();
 }
 
 // Navigation controller
 function switchView(viewName) {
   playClickSound();
   activeView = viewName;
+  
+  // Clean up simulation intervals when navigating away from the map
+  if (viewName !== 'map') {
+    if (window.exploreSimInterval) {
+      clearInterval(window.exploreSimInterval);
+      window.exploreSimInterval = null;
+    }
+  }
   
   // Dynamic Header Back button controller for native app feeling
   const backBtn = document.getElementById('btn-back');
@@ -1287,6 +1322,20 @@ function showAddExpenseDrawer() {
   // Reset Split bill UI
   document.getElementById('split-bill-section').style.display = 'none';
   
+  // Reset location & GPS
+  const locNameInput = document.getElementById('drawer-loc-name');
+  const locLatInput = document.getElementById('drawer-loc-lat');
+  const locLngInput = document.getElementById('drawer-loc-lng');
+  if (locNameInput) locNameInput.value = '';
+  if (locLatInput) locLatInput.value = '';
+  if (locLngInput) locLngInput.value = '';
+  
+  const gpsBtn = document.getElementById('btn-get-location');
+  if (gpsBtn) {
+    gpsBtn.innerHTML = `🎯 自動定位`;
+    gpsBtn.disabled = false;
+  }
+  
   // Hide delete button for new entries
   const btnDelete = document.getElementById('btn-delete-tx');
   if (btnDelete) btnDelete.style.display = 'none';
@@ -1528,6 +1577,13 @@ function saveTransaction() {
   const desc = document.getElementById('drawer-desc-input').value.trim();
   const date = document.getElementById('drawer-date-input').value || getFormattedCurrentTime();
   
+  // Location Name & coordinates
+  const locationName = document.getElementById('drawer-loc-name').value.trim();
+  const latVal = document.getElementById('drawer-loc-lat').value.trim();
+  const lngVal = document.getElementById('drawer-loc-lng').value.trim();
+  const lat = latVal ? parseFloat(latVal) : null;
+  const lng = lngVal ? parseFloat(lngVal) : null;
+  
   // Category
   const activeCatEl = document.querySelector('.category-pill.active');
   const category = activeCatEl ? activeCatEl.dataset.category : 'others';
@@ -1559,6 +1615,7 @@ function saveTransaction() {
       trip.transactions[index] = {
         ...trip.transactions[index],
         date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith,
+        locationName, lat, lng,
         updatedAt: Date.now()
       };
       showToast('✅ 交易修改成功！');
@@ -1568,6 +1625,7 @@ function saveTransaction() {
     const newTx = {
       id: 'tx-' + Date.now(),
       date, amountForeign, amountBase, category, paymentMethod, desc, payer, splitWith,
+      locationName, lat, lng,
       updatedAt: Date.now()
     };
     trip.transactions.push(newTx);
@@ -1606,6 +1664,17 @@ function editTransaction(txId) {
   
   document.getElementById('drawer-desc-input').value = tx.desc;
   document.getElementById('drawer-date-input').value = tx.date;
+  
+  // Populate location & GPS
+  document.getElementById('drawer-loc-name').value = tx.locationName || '';
+  document.getElementById('drawer-loc-lat').value = (tx.lat !== undefined && tx.lat !== null) ? tx.lat : '';
+  document.getElementById('drawer-loc-lng').value = (tx.lng !== undefined && tx.lng !== null) ? tx.lng : '';
+  
+  const gpsBtn = document.getElementById('btn-get-location');
+  if (gpsBtn) {
+    gpsBtn.innerHTML = `🎯 自動定位`;
+    gpsBtn.disabled = false;
+  }
   
   // Populate category pill
   document.querySelectorAll('.category-pill').forEach(el => el.classList.remove('active'));
@@ -2944,6 +3013,39 @@ function playClickSound() {
   }
 }
 
+// Global Web Audio achievement level-up sound synthesizer
+function playUnlockSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const now = audioCtx.currentTime;
+    
+    // Play a lovely 8-bit retro coin-like double chime: Note 1 (E6) -> Note 2 (B6)
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(987.77, now); // B5 (987.77Hz)
+    osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6 (1318.51Hz)
+    
+    gain.gain.setValueAtTime(0.04, now);
+    gain.gain.setValueAtTime(0.04, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(now + 0.35);
+  } catch (e) {
+    console.log('AudioContext achievement sound error:', e);
+  }
+}
+
 // Promise-based Custom Premium Confirm Dialog Modal
 function showCustomConfirm(title, desc, isAlert = false) {
   return new Promise((resolve) => {
@@ -3192,6 +3294,756 @@ async function deleteTransactionFromDrawer() {
     renderApp();
     showToast('🗑️ 已成功刪除該筆消費');
   }
+}
+
+// -------------------------------------------------------------
+// 🌐 旅遊地圖軌跡與消費地點可視化功能 (Map & GPS Feature)
+// -------------------------------------------------------------
+
+// Global references for map objects
+window.travelMap = null;
+window.travelMarkers = {};
+window.travelPolyline = null;
+
+// HTML5 Geolocation API capture current coordinates
+function getCurrentGPSLocation() {
+  const btn = document.getElementById('btn-get-location');
+  if (!navigator.geolocation) {
+    showToast('❌ 您的瀏覽器不支援 Geolocation 定位');
+    return;
+  }
+  
+  btn.innerHTML = `🌀 定位中...`;
+  btn.disabled = true;
+  
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      document.getElementById('drawer-loc-lat').value = lat.toFixed(6);
+      document.getElementById('drawer-loc-lng').value = lng.toFixed(6);
+      btn.innerHTML = `✅ 定位成功`;
+      btn.disabled = false;
+      showToast('🎯 GPS 定位獲取成功！');
+      
+      // Reset button after 3 seconds
+      setTimeout(() => {
+        btn.innerHTML = `🎯 自動定位`;
+      }, 3000);
+    },
+    (error) => {
+      console.error(error);
+      let errMsg = '定位失敗，請手動輸入';
+      if (error.code === error.PERMISSION_DENIED) {
+        errMsg = '未授權定位權限，請手動輸入';
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        errMsg = '定位訊號不足，請手動輸入';
+      }
+      btn.innerHTML = `❌ 定位失敗`;
+      btn.disabled = false;
+      showToast('⚠️ ' + errMsg);
+      
+      setTimeout(() => {
+        btn.innerHTML = `🎯 自動定位`;
+      }, 3000);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    }
+  );
+}
+
+// Inject realistic Tokyo landmark coordinates into current active trip transactions
+function injectDemoCoordinates() {
+  const trip = getActiveTrip();
+  if (!trip) return;
+  
+  // Define realistic coordinates mapping based on transaction description keywords or index
+  const landmarkCoords = [
+    { desc: '一蘭拉麵', name: '一蘭拉麵 新宿東口店', lat: 35.6909, lng: 139.7003 },
+    { desc: '東京鐵塔', name: '東京鐵塔展望台', lat: 35.6586, lng: 139.7454 },
+    { desc: '藥妝店', name: '松本清 新宿三丁目店', lat: 35.6917, lng: 139.7015 },
+    { desc: '新宿歌舞伎町', name: '新宿格拉斯麗酒店', lat: 35.6938, lng: 139.7035 },
+    { desc: 'Skyliner', name: '京成成田機場站', lat: 35.7720, lng: 140.3929 },
+    { desc: '築地市場', name: '築地青空三代目壽司', lat: 35.6655, lng: 139.7702 },
+    { desc: '淺草雷門', name: '淺草寺雷門', lat: 35.7110, lng: 139.7967 }
+  ];
+
+  let injectedCount = 0;
+  
+  trip.transactions.forEach((t, i) => {
+    // Try to find a match by keyword
+    let match = landmarkCoords.find(item => t.desc.includes(item.desc));
+    if (!match) {
+      // If no keyword match, distribute them around Tokyo sequentially
+      const backupSpots = [
+        { name: '澀谷十字路口', lat: 35.6595, lng: 139.7005 },
+        { name: '明治神宮', lat: 35.6764, lng: 139.6993 },
+        { name: '上野恩賜公園', lat: 35.7142, lng: 139.7732 },
+        { name: '銀座三越', lat: 35.6717, lng: 139.7650 },
+        { name: '秋葉原電器街', lat: 35.6983, lng: 139.7730 }
+      ];
+      match = backupSpots[i % backupSpots.length];
+    }
+    
+    t.locationName = match.name;
+    t.lat = match.lat;
+    t.lng = match.lng;
+    injectedCount++;
+  });
+  
+  saveData();
+  renderMap();
+  showToast(`🪄 已成功為 ${injectedCount} 筆交易載入東京範例地圖軌跡！`);
+}
+
+// Render travel map route paths and visual timeline components
+// Render travel map route paths and visual timeline components
+function renderMap() {
+  const trip = getActiveTrip();
+  const mapContainer = document.getElementById('view-map');
+  if (!mapContainer) return;
+
+  if (!trip) {
+    mapContainer.innerHTML = `
+      <div class="empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+        <h3>開始您的旅程地圖</h3>
+        <p style="margin-top: 8px; margin-bottom: 20px;">目前沒有任何使用中的旅程。請先在設定中切換或建立旅程！</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Double Mode Tabs
+  window.activeMapSubTab = window.activeMapSubTab || 'route';
+  window.watchPositionId = window.watchPositionId || null;
+  window.exploreSimInterval = window.exploreSimInterval || null;
+
+  let html = `
+    <!-- Sub-tabs for Map Modes -->
+    <div class="map-sub-tabs">
+      <button class="map-sub-tab tab-route ${window.activeMapSubTab === 'route' ? 'active' : ''}" onclick="switchMapSubTab('route')">
+        🗺️ 消費足跡軌跡
+      </button>
+      <button class="map-sub-tab tab-explore ${window.activeMapSubTab === 'explore' ? 'active' : ''}" onclick="switchMapSubTab('explore')">
+        🎮 生活與探索開圖
+      </button>
+    </div>
+  `;
+
+  const locTransactions = trip.transactions
+    .filter(t => t.lat !== undefined && t.lat !== null && t.lng !== undefined && t.lng !== null)
+    .sort((a, b) => new Date(a.date) - new Date(b.date)); // chronological order
+
+  const hasCoords = locTransactions.length > 0;
+
+  if (window.activeMapSubTab === 'route') {
+    // Mode 1: Expense Route
+    if (!hasCoords) {
+      mapContainer.innerHTML = html + `
+        <div class="empty-state" style="padding: 40px 16px;">
+          <div style="font-size: 50px; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 122, 69, 0.4)); animation: pulse 2s infinite;">🗺️</div>
+          <h3 style="font-family: var(--font-title); font-size: 18px; color: var(--secondary); margin-bottom: 8px;">未有地圖軌跡數據</h3>
+          <p style="margin-bottom: 24px; font-size: 13px; color: var(--text-muted); line-height: 1.5; max-width: 320px;">
+            本旅程尚未記錄 any 包含經緯度座標的交易花費！<br><br>
+            您可以在記帳時點擊 <b>「🎯 自動定位」</b> 獲取當前 GPS 位置，或是點擊下方按鈕一鍵為您現有的交易<b>注入逼真的東京知名地標軌跡</b>，立即體驗地圖魅力！
+          </p>
+          <button class="btn-primary" onclick="injectDemoCoordinates()" style="background: linear-gradient(135deg, var(--primary) 0%, #ff4d4f 100%); border: none; font-weight: bold; border-radius: 14px; padding: 12px 24px; width: 100%; max-width: 280px; box-shadow: 0 4px 15px rgba(255, 122, 69, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            🪄 點我自動載入範例地圖軌跡
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    // Calculate Map Stats
+    const totalSpots = locTransactions.length;
+    const mapSpentBase = locTransactions.reduce((acc, t) => acc + t.amountBase, 0);
+    const mapSpentForeign = locTransactions.reduce((acc, t) => acc + t.amountForeign, 0);
+
+    html += `
+      <!-- Map Dashboard Header -->
+      <div class="card" style="background: linear-gradient(145deg, #1b1b2f 0%, #11111d 100%); margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--secondary);">🗺️ 旅遊軌跡看板</span>
+          <button onclick="injectDemoCoordinates()" style="background: rgba(255, 255, 255, 0.04); border: 1px dashed var(--accent); color: var(--accent); font-size: 10px; font-weight: bold; padding: 4px 8px; border-radius: 8px; cursor: pointer;">
+            🪄 重新載入範例
+          </button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px; margin-bottom: 10px;">
+          <div style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div style="font-size: 9px; color: var(--text-muted); margin-bottom: 2px;">📍 踏足足跡點</div>
+            <div style="font-family: var(--font-title); font-size: 18px; font-weight: 800; color: var(--text-main);">${totalSpots} 處</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div style="font-size: 9px; color: var(--text-muted); margin-bottom: 2px;">💰 地圖累計支出</div>
+            <div style="font-family: var(--font-title); font-size: 15px; font-weight: 800; color: var(--primary);">
+              ${Math.round(mapSpentForeign).toLocaleString()} <small style="font-size: 10px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</small>
+              <div style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-top: 1px;">≈ NT$ ${Math.round(mapSpentBase).toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+        
+        <button id="btn-play-playback" class="btn-primary" onclick="playRouteAnimation()" style="width: 100%; height: 38px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--accent) 0%, #1890ff 100%); color: var(--text-dark); border-radius: 12px; font-weight: 700; font-size: 12px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(54, 207, 201, 0.2);">
+          ▶️ 播放旅程足跡動畫
+        </button>
+      </div>
+
+      <!-- Leaflet Map Container -->
+      <div id="travel-leaflet-map" style="width: 100%; height: 340px; border-radius: 20px; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); margin-bottom: 16px; overflow: hidden; position: relative;"></div>
+
+      <!-- Timeline header -->
+      <div class="ledger-header" style="margin-bottom: 10px;">
+        <h2 class="ledger-title" style="font-size: 15px;">📍 足跡時空時間軸</h2>
+      </div>
+
+      <!-- Timeline spots list -->
+      <div class="timeline-spots-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+    `;
+
+    locTransactions.forEach((t, i) => {
+      const cat = CATEGORIES[t.category] || CATEGORIES.others;
+      const isFirst = i === 0;
+      const isLast = i === totalSpots - 1;
+      
+      let neonColor = 'var(--primary)';
+      if (t.category === 'food') neonColor = '#ff7a45';
+      else if (t.category === 'transport') neonColor = '#2490ff';
+      else if (t.category === 'lodging') neonColor = '#b37feb';
+      else if (t.category === 'shopping') neonColor = '#ff85c0';
+      else if (t.category === 'play') neonColor = '#36cfc9';
+      else if (t.category === 'flight') neonColor = '#ffd666';
+      else if (t.category === 'souvenir') neonColor = '#ff4d4f';
+      else if (t.category === 'fee') neonColor = '#52c41a';
+
+      html += `
+        <div class="timeline-spot-item" onclick="focusOnMapSpot(${t.lat}, ${t.lng}, '${t.id}')" style="background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; position: relative; overflow: hidden;">
+          <div style="position: absolute; left: 24px; top: ${isFirst ? '50%' : '0'}; bottom: ${isLast ? '50%' : '0'}; width: 2px; background: rgba(255,255,255,0.06); z-index: 1;"></div>
+          
+          <div style="width: 22px; height: 22px; border-radius: 50%; background: #0d0d15; border: 2px solid ${neonColor}; box-shadow: 0 0 6px ${neonColor}; display: flex; align-items: center; justify-content: center; z-index: 2; font-family: monospace; font-size: 10px; font-weight: bold; color: var(--text-main);">
+            ${i + 1}
+          </div>
+          
+          <div class="ledger-icon-box ${cat.class}" style="width: 32px; height: 32px; border-radius: 10px; font-size: 16px; z-index: 2;">
+            ${cat.icon}
+          </div>
+          
+          <div style="flex: 1; min-width: 0; z-index: 2;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${t.locationName || t.desc}
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${t.date} · ${t.desc || '無備註'}
+            </div>
+          </div>
+          
+          <div style="text-align: right; z-index: 2;">
+            <div style="font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--text-main);">
+              ${Math.round(t.amountForeign).toLocaleString()} <span style="font-size: 10px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span>
+            </div>
+            <div style="font-size: 9px; color: var(--text-muted); margin-top: 1px;">
+              NT$ ${Math.round(t.amountBase).toLocaleString()}
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  } else {
+    // Mode 2: Life Exploration fog grids
+    const unlockCount = Object.keys(trip.unlockedGrids || {}).length;
+    const explorerLevel = getExplorerLevelName(unlockCount);
+    const totalDist = calculateLiveTrackDistance(trip.liveTrack || []);
+
+    html += `
+      <!-- Explore Stats Dashboard -->
+      <div class="card" style="background: linear-gradient(145deg, #0d0f1b 0%, #080911 100%); margin-bottom: 12px; border: 1px solid rgba(54, 207, 201, 0.15); box-shadow: 0 4px 15px rgba(54, 207, 201, 0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span style="font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--accent);">📡 生活探索迷霧開圖</span>
+          <span id="explore-lvl-badge" class="explorer-level-badge">${explorerLevel}</span>
+        </div>
+        
+        <div class="explorer-stats-box">
+          <div class="explorer-stats-card highlight">
+            <div class="explorer-stats-label">🔓 解鎖區域 (網格)</div>
+            <div id="explore-grids-count" class="explorer-stats-val accent">${unlockCount} 個</div>
+          </div>
+          <div class="explorer-stats-card">
+            <div class="explorer-stats-label">🏃 累積移動距離</div>
+            <div class="explorer-stats-val">${totalDist.toFixed(2)} km</div>
+          </div>
+          <div class="explorer-stats-card">
+            <div class="explorer-stats-label">🗺️ 探索開圖程度</div>
+            <div class="explorer-stats-val">${Math.min(100, Math.round(unlockCount / 50 * 100))}%</div>
+          </div>
+        </div>
+        
+        <!-- Action Control Buttons -->
+        <div class="explore-action-row">
+          <button class="btn-explore-toggle ${window.watchPositionId ? 'active' : ''}" onclick="toggleLiveTracking()">
+            ${window.watchPositionId ? '<span class="radar-pulse-dot"><span class="radar-pulse-ring"></span></span> 📡 追蹤中...' : '📡 啟動實時追蹤'}
+          </button>
+        </div>
+      </div>
+
+      <!-- Leaflet Map Container -->
+      <div id="travel-leaflet-map" style="width: 100%; height: 340px; border-radius: 20px; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); margin-bottom: 16px; overflow: hidden; position: relative;"></div>
+
+      <!-- Timeline header -->
+      <div class="ledger-header" style="margin-bottom: 10px;">
+        <h2 class="ledger-title" style="font-size: 15px;">🎮 網格開圖歷史足跡</h2>
+      </div>
+
+      <!-- Timeline spots list -->
+      <div class="timeline-spots-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+    `;
+
+    const unlockedList = Object.values(trip.unlockedGrids || {}).sort((a, b) => new Date(b.time) - new Date(a.time));
+    if (unlockedList.length === 0) {
+      html += `
+        <div style="text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: 12.5px; border: 1px dashed var(--border-color); border-radius: 18px; background: rgba(255,255,255,0.01);">
+          🧭 尚未有任何生活開圖區域網格！<br><br>
+          請開啟下方的「<b>📡 啟動實時追蹤</b>」按鈕，隨身散步即可實時開圖！
+        </div>
+      `;
+    } else {
+      unlockedList.forEach((grid) => {
+        html += `
+          <div class="timeline-spot-item" onclick="focusOnExploreGrid(${grid.latCenter}, ${grid.lngCenter})" style="background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <div class="ledger-icon-box cat-transport" style="width: 32px; height: 32px; border-radius: 10px; font-size: 16px;">
+              🧭
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-main);">
+                解鎖未知區域網格 [${grid.latGrid}, ${grid.lngGrid}]
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                解鎖時間: ${grid.time} · 中心地點: ${grid.latCenter.toFixed(4)}, ${grid.lngCenter.toFixed(4)}
+              </div>
+            </div>
+            <div style="font-size: 10px; color: var(--accent); font-weight: bold;">
+              🔓 已開圖
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    html += `</div>`;
+  }
+
+  mapContainer.innerHTML = html;
+
+  // Initialize the Leaflet map asynchronously
+  setTimeout(() => {
+    initLeafletMap(locTransactions);
+  }, 100);
+}
+
+// Tab switcher for map modes
+function switchMapSubTab(tabName) {
+  playClickSound();
+  window.activeMapSubTab = tabName;
+  
+  // Clear simulated walking interval when switching modes
+  if (window.exploreSimInterval) {
+    clearInterval(window.exploreSimInterval);
+    window.exploreSimInterval = null;
+  }
+  
+  // Clear mock line layer reference
+  window.exploreLivePolyline = null;
+  window.currentLocationMarker = null;
+
+  renderMap();
+}
+
+// Mount and initialize Leaflet map
+function initLeafletMap(locTransactions) {
+  if (window.travelMap) {
+    try {
+      window.travelMap.off();
+      window.travelMap.remove();
+    } catch (e) {
+      console.error("Error removing old map instance:", e);
+    }
+    window.travelMap = null;
+  }
+
+  window.travelMarkers = {};
+  window.travelPolyline = null;
+
+  const mapDiv = document.getElementById('travel-leaflet-map');
+  if (!mapDiv) return;
+
+  const firstTx = locTransactions[0];
+  const centerLat = firstTx ? firstTx.lat : 35.6762;
+  const centerLng = firstTx ? firstTx.lng : 139.6503;
+
+  window.travelMap = L.map('travel-leaflet-map', {
+    zoomControl: false,
+    attributionControl: false
+  }).setView([centerLat, centerLng], 12);
+
+  // CartoDB Dark Matter tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(window.travelMap);
+
+  // Check sub tab mode
+  if (window.activeMapSubTab === 'explore') {
+    const trip = getActiveTrip();
+    if (!trip) return;
+
+    // 1. Draw all unlocked grid rectangles on map
+    if (trip.unlockedGrids) {
+      Object.values(trip.unlockedGrids).forEach(grid => {
+        const bounds = [
+          [grid.latGrid * 0.002, grid.lngGrid * 0.002],
+          [(grid.latGrid + 1) * 0.002, (grid.lngGrid + 1) * 0.002]
+        ];
+        L.rectangle(bounds, {
+          color: '#36cfc9',
+          weight: 1,
+          fillColor: '#36cfc9',
+          fillOpacity: 0.18,
+          className: 'leaflet-unlocked-grid-rect'
+        }).addTo(window.travelMap);
+      });
+    }
+
+    // 2. Draw live tracking polyline and current location
+    if (trip.liveTrack && trip.liveTrack.length > 0) {
+      const fullPath = trip.liveTrack.map(p => [p.lat, p.lng]);
+      window.exploreLivePolyline = L.polyline(fullPath, {
+        color: '#36cfc9',
+        weight: 4,
+        opacity: 0.9
+      }).addTo(window.travelMap);
+
+      const lastPt = trip.liveTrack[trip.liveTrack.length - 1];
+      window.travelMap.setView([lastPt.lat, lastPt.lng], 15);
+
+      const currentIcon = L.divIcon({
+        html: '<div class="leaflet-current-loc-dot"><div class="leaflet-current-loc-pulse"></div></div>',
+        className: 'custom-leaflet-icon',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+      window.currentLocationMarker = L.marker([lastPt.lat, lastPt.lng], { icon: currentIcon }).addTo(window.travelMap);
+    } else {
+      // Default to Tokyo shibuya if nothing tracked
+      window.travelMap.setView([35.6580, 139.7016], 14);
+    }
+    return;
+  }
+
+  // Original Expense Route Drawing
+  const coordinates = [];
+
+  locTransactions.forEach((t, i) => {
+    coordinates.push([t.lat, t.lng]);
+
+    // Neon colors mapping matching categories
+    let markerColor = '#ff7a45'; // food
+    if (t.category === 'transport') markerColor = '#2490ff';
+    else if (t.category === 'lodging') markerColor = '#b37feb';
+    else if (t.category === 'shopping') markerColor = '#ff85c0';
+    else if (t.category === 'play') markerColor = '#36cfc9';
+    else if (t.category === 'flight') markerColor = '#ffd666';
+    else if (t.category === 'souvenir') markerColor = '#ff4d4f';
+    else if (t.category === 'fee') markerColor = '#52c41a';
+
+    // Pulse neon marker div
+    const markerHtml = `
+      <div class="custom-neon-marker" style="--marker-color: ${markerColor};">
+        <span class="marker-number">${i + 1}</span>
+        <div class="marker-pulse" style="--marker-color: ${markerColor};"></div>
+      </div>
+    `;
+
+    const neonIcon = L.divIcon({
+      html: markerHtml,
+      className: 'custom-leaflet-icon',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14]
+    });
+
+    const trip = getActiveTrip();
+    const cat = CATEGORIES[t.category] || CATEGORIES.others;
+    const popupHtml = `
+      <div class="leaflet-dark-popup">
+        <div class="popup-header">
+          <span class="popup-icon">${cat.icon}</span>
+          <span class="popup-title">${t.locationName || t.desc}</span>
+        </div>
+        <div class="popup-body">
+          <div class="popup-amount">${Math.round(t.amountForeign).toLocaleString()} ${trip.foreignCurrency}</div>
+          <div class="popup-amount-base">≈ NT$ ${Math.round(t.amountBase).toLocaleString()}</div>
+          <div class="popup-desc">${t.desc || '無備註'}</div>
+          <div class="popup-time">${t.date}</div>
+        </div>
+      </div>
+    `;
+
+    const marker = L.marker([t.lat, t.lng], { icon: neonIcon })
+      .addTo(window.travelMap)
+      .bindPopup(popupHtml, {
+        className: 'leaflet-custom-popup-container',
+        closeButton: false,
+        offset: L.point(0, -5)
+      });
+
+    window.travelMarkers[t.id] = marker;
+  });
+
+  // Chronologically connect with neon orange dashed polyline trajectory
+  if (coordinates.length > 1) {
+    window.travelPolyline = L.polyline(coordinates, {
+      color: '#ff7a45',
+      dashArray: '8, 8',
+      weight: 3,
+      opacity: 0.85
+    }).addTo(window.travelMap);
+
+    try {
+      window.travelMap.fitBounds(window.travelPolyline.getBounds(), {
+        padding: [30, 30]
+      });
+    } catch (e) {
+      console.warn("Could not fitBounds:", e);
+    }
+  }
+}
+
+// High-accuracy background GPS watch positioning toggle
+function toggleLiveTracking() {
+  playClickSound();
+  const trip = getActiveTrip();
+  if (!trip) return;
+
+  if (window.watchPositionId) {
+    navigator.geolocation.clearWatch(window.watchPositionId);
+    window.watchPositionId = null;
+    showToast('📡 實時軌跡追蹤已關閉');
+  } else {
+    if (!navigator.geolocation) {
+      showToast('❌ 您的瀏覽器不支援實時 GPS 追蹤！');
+      return;
+    }
+
+    showToast('📡 啟動高精度 GPS 實時探索追蹤...');
+    window.watchPositionId = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        if (!trip.liveTrack) trip.liveTrack = [];
+        
+        // Anti-shaking coordinate capture filter
+        const lastPt = trip.liveTrack[trip.liveTrack.length - 1];
+        if (!lastPt || Math.abs(lastPt.lat - lat) > 0.00002 || Math.abs(lastPt.lng - lng) > 0.00002) {
+          trip.liveTrack.push({ lat, lng, time: getFormattedCurrentTime() });
+          checkGridUnlock(lat, lng);
+        }
+      },
+      (error) => {
+        console.error("GPS Watch error:", error);
+        showToast(`⚠️ 位置監聽失敗: ${error.message}`);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  }
+
+  renderMap();
+}
+
+// 200m area geofence grids calculator & unlocked status manager
+function checkGridUnlock(lat, lng) {
+  const trip = getActiveTrip();
+  if (!trip) return;
+
+  if (!trip.unlockedGrids) trip.unlockedGrids = {};
+
+  // 0.002 lat/lng unit is approx. 200m grid cell
+  const latGrid = Math.floor(lat / 0.002);
+  const lngGrid = Math.floor(lng / 0.002);
+  const gridKey = `${latGrid}_${lngGrid}`;
+
+  if (!trip.unlockedGrids[gridKey]) {
+    trip.unlockedGrids[gridKey] = {
+      latGrid,
+      lngGrid,
+      latCenter: (latGrid + 0.5) * 0.002,
+      lngCenter: (lngGrid + 0.5) * 0.002,
+      time: getFormattedCurrentTime()
+    };
+
+    saveData();
+    playUnlockSound();
+
+    // Haptic vibration feedback for gaming controller feel
+    if (navigator.vibrate) {
+      navigator.vibrate([120, 80, 120]);
+    }
+
+    const unlockCount = Object.keys(trip.unlockedGrids).length;
+    const levelName = getExplorerLevelName(unlockCount);
+    showToast(`🎉 恭喜解鎖全新探索區域！已探索 ${unlockCount} 個網格 (${levelName})`);
+
+    // Live update map if actively viewing explore subtab
+    if (activeView === 'map' && window.activeMapSubTab === 'explore') {
+      renderMap();
+    }
+  }
+}
+
+// Achievement Explorer Level Names Calculator
+function getExplorerLevelName(gridsCount) {
+  if (gridsCount <= 2) return 'LV.1 戶外初學者 🐣';
+  if (gridsCount <= 7) return 'LV.2 巷弄冒險家 🧭';
+  if (gridsCount <= 15) return 'LV.3 街區征服者 🏃';
+  if (gridsCount <= 30) return 'LV.4 城市巡邏員 📡';
+  return 'LV.5 世紀大探險家 🌟';
+}
+
+
+
+// Pan focus to explore grid centers
+function focusOnExploreGrid(lat, lng) {
+  if (!window.travelMap) return;
+  playClickSound();
+  window.travelMap.setView([lat, lng], 16, { animate: true, duration: 0.8 });
+}
+
+// Haversine Distance helper (KM)
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // radius of Earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Cumulative tracked route distance calculator
+function calculateLiveTrackDistance(track) {
+  if (!track || track.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < track.length - 1; i++) {
+    total += getHaversineDistance(track[i].lat, track[i].lng, track[i+1].lat, track[i+1].lng);
+  }
+  return total;
+}
+
+// Pan to spot, zoom in, and open the marker's popup on item clicks
+function focusOnMapSpot(lat, lng, txId) {
+  if (!window.travelMap) return;
+  playClickSound();
+
+  window.travelMap.setView([lat, lng], 15, {
+    animate: true,
+    duration: 0.8
+  });
+
+  const marker = window.travelMarkers[txId];
+  if (marker) {
+    setTimeout(() => {
+      marker.openPopup();
+    }, 400);
+  }
+}
+
+// Cinematic animation playback tracing routes point-by-point
+async function playRouteAnimation() {
+  const trip = getActiveTrip();
+  if (!trip || !window.travelMap) return;
+  playClickSound();
+
+  const locTransactions = trip.transactions
+    .filter(t => t.lat !== undefined && t.lat !== null && t.lng !== undefined && t.lng !== null)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (locTransactions.length < 2) {
+    showToast('⚠️ 至少需要 2 個座標點才能播放軌跡動畫！');
+    return;
+  }
+
+  const btn = document.getElementById('btn-play-playback');
+  if (btn) {
+    btn.innerHTML = `🌀 正在播放動畫軌跡...`;
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+  }
+
+  // Clear existing polyline
+  if (window.travelPolyline) {
+    window.travelMap.removeLayer(window.travelPolyline);
+  }
+
+  const animCoordinates = [];
+  const animPolyline = L.polyline(animCoordinates, {
+    color: '#36cfc9',
+    weight: 4,
+    opacity: 0.9,
+    dashArray: null
+  }).addTo(window.travelMap);
+
+  window.travelMap.closePopup();
+
+  for (let i = 0; i < locTransactions.length; i++) {
+    const t = locTransactions[i];
+    animCoordinates.push([t.lat, t.lng]);
+    animPolyline.setLatLngs(animCoordinates);
+
+    window.travelMap.setView([t.lat, t.lng], 15, {
+      animate: true,
+      duration: 0.8
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    const marker = window.travelMarkers[t.id];
+    if (marker) {
+      marker.openPopup();
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  window.travelMap.removeLayer(animPolyline);
+  
+  const fullCoordinates = locTransactions.map(t => [t.lat, t.lng]);
+  window.travelPolyline = L.polyline(fullCoordinates, {
+    color: '#ff7a45',
+    dashArray: '8, 8',
+    weight: 3,
+    opacity: 0.85
+  }).addTo(window.travelMap);
+
+  if (btn) {
+    btn.innerHTML = `▶️ 播放旅程足跡動畫`;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+
+  window.travelMap.fitBounds(window.travelPolyline.getBounds(), {
+    padding: [30, 30]
+  });
+
+  showToast('🎬 旅程足跡播放完畢！');
 }
 
 
