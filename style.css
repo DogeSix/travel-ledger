@@ -279,9 +279,10 @@ header h1 {
 /* Floating Action Button for Adding Expense */
 .fab-btn {
   position: absolute;
-  bottom: calc(44px + var(--safe-bottom));
-  left: 50%;
-  transform: translateX(-50%) scale(1);
+  bottom: calc(88px + var(--safe-bottom));
+  right: 24px;
+  left: auto;
+  transform: scale(1);
   width: 58px;
   height: 58px;
   border-radius: 50%;
@@ -307,7 +308,7 @@ header h1 {
 }
 
 .fab-btn:active {
-  transform: translateX(-50%) scale(0.9);
+  transform: scale(0.9);
   box-shadow: 0 3px 10px rgba(255, 122, 69, 0.3);
 }
 
