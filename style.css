@@ -1,10 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-color: #0b0b10;
-  --panel-bg: #151522;
-  --panel-bg-glass: rgba(21, 21, 34, 0.75);
-  --border-color: rgba(255, 255, 255, 0.08);
+  --bg-color: #08080d; /* 微醺紫藍深黑夜色 */
+  --panel-bg: #12121d;
+  --panel-bg-glass: rgba(18, 18, 29, 0.75);
+  --border-color: rgba(255, 255, 255, 0.05);
   --border-focus: rgba(255, 122, 69, 0.4);
   
   --primary: #ff7a45; /* Sunset Orange */
@@ -15,6 +15,7 @@
   --danger: #ff4d4f; /* Electric Red */
   --danger-rgb: 255, 77, 79;
   --success: #52c41a; /* Forest Green */
+  --purple: #b37feb; /* Neon Purple */
   
   --text-main: #f0f0f5;
   --text-muted: #8c8c9e;
@@ -27,6 +28,7 @@
   --font-title: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   
+  --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -681,13 +683,14 @@ header h1 {
   background-color: var(--panel-bg);
   border: 1px solid var(--border-color);
   border-radius: 18px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
   position: relative;
   transition: transform 0.2s ease, background-color 0.2s ease;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .ledger-item:active {
@@ -715,13 +718,16 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  flex-wrap: nowrap;
 }
 
 .ledger-category {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-main);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ledger-paymethod {
@@ -731,6 +737,8 @@ header h1 {
   border-radius: 8px;
   background-color: rgba(255, 255, 255, 0.06);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ledger-paymethod.cash {
@@ -754,11 +762,13 @@ header h1 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .ledger-amounts {
   text-align: right;
   flex-shrink: 0;
+  min-width: 80px;
 }
 
 .ledger-amount-base {
@@ -776,6 +786,28 @@ header h1 {
   font-size: 10px;
   color: var(--text-muted);
   margin-top: 2px;
+}
+
+/* Mobile ledger optimizations for small screens */
+@media (max-width: 380px) {
+  .ledger-item {
+    padding: 12px;
+    gap: 10px;
+  }
+  .ledger-icon-box {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  .ledger-category {
+    font-size: 12px;
+  }
+  .ledger-amounts {
+    min-width: 70px;
+  }
+  .ledger-amount-base {
+    font-size: 13px;
+  }
 }
 
 /* Slide-up Bottom Sheet (Drawer) */
@@ -1647,24 +1679,6 @@ button,
   touch-action: manipulation;
 }
 
-/* Real-time sync online state indicator icon */
-.sync-indicator-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #52c41a;
-  border-radius: 50%;
-  margin-left: 6px;
-  box-shadow: 0 0 8px #52c41a;
-  animation: pulse-sync 1.8s infinite ease-in-out;
-  vertical-align: middle;
-}
-
-@keyframes pulse-sync {
-  0% { transform: scale(0.95); opacity: 0.5; box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7); }
-  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 8px 3px rgba(82, 196, 26, 0.3); }
-  100% { transform: scale(0.95); opacity: 0.5; box-shadow: 0 0 0 0 rgba(82, 196, 26, 0); }
-}
 
 /* Swipe to Delete Styles for Trips */
 .swipe-container {
@@ -2341,18 +2355,181 @@ input:checked + .slider:before {
   border: 1px solid rgba(255, 122, 69, 0.3);
 }
 
-#btn-manual-sync:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  transform: translateY(-1px);
+/* ==========================================================================
+   11. 自定義高階毛玻璃 Confirm & Prompt 尊爵對話框樣式
+   ========================================================================== */
+#custom-confirm-overlay,
+#custom-prompt-overlay {
+  z-index: 999;
 }
 
-#btn-manual-sync:active {
-  transform: translateY(1px);
+#custom-confirm-dialog,
+#custom-prompt-dialog {
+  background: rgba(22, 22, 34, 0.85) !important;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 122, 69, 0.1);
+  transform: scale(0.9) translateY(20px);
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.28s ease;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+#custom-confirm-overlay.active #custom-confirm-dialog,
+#custom-prompt-overlay.active #custom-prompt-dialog {
+  transform: scale(1) translateY(0);
+  opacity: 1;
 }
+
+/* ==========================================================================
+   12. 帳本交易明細 (Ledger Item) 左右滑動刪除手勢樣式
+   ========================================================================== */
+.ledger-swipe-container {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+  border-radius: 18px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  touch-action: pan-y;
+}
+
+.ledger-swipe-content {
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  z-index: 2;
+  background-color: var(--panel-bg);
+  padding: 14px 16px;
+  transition: transform 0.1s ease;
+}
+
+.ledger-swipe-action-delete {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  background: linear-gradient(135deg, var(--danger) 0%, #ff7875 100%);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 1;
+  transform: translateX(100%);
+  transition: transform 0.1s ease;
+  gap: 4px;
+}
+
+.ledger-swipe-action-delete svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* ==========================================================================
+   13. 儀表板：多段支付管道彩色進度條 (Segmented Bar)
+   ========================================================================== */
+.segmented-bar-container {
+  width: 100%;
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  margin-top: 14px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.segmented-bar-segment {
+  height: 100%;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.segmented-bar-segment.cash {
+  background: linear-gradient(90deg, #ffc069, #ffa940);
+}
+
+.segmented-bar-segment.card {
+  background: linear-gradient(90deg, #36cfc9, #13c2c2);
+}
+
+.segmented-bar-segment.split {
+  background: linear-gradient(90deg, #b37feb, #722ed1);
+}
+
+/* ==========================================================================
+   14. 儀表板：現金水位水庫進度條 (Wallet Reservoir Bar)
+   ========================================================================== */
+.wallet-water-wrapper {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.wallet-water-track {
+  width: 100%;
+  height: 5px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.wallet-water-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #36cfc9 0%, #13c2c2 100%);
+  border-radius: 3px;
+  width: 100%;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wallet-water-fill.warning {
+  background: linear-gradient(90deg, #ffc069 0%, #ffa940 100%);
+}
+
+.wallet-water-fill.danger {
+  background: linear-gradient(90deg, #ff4d4f 0%, #ff7875 100%);
+}
+
+/* ==========================================================================
+   15. 旅伴拆帳：債務結清按鈕樣式 (Mark as Settled)
+   ========================================================================== */
+.btn-settle-debt {
+  background: linear-gradient(135deg, #73d13d 0%, #52c41a 100%);
+  border: none;
+  color: var(--text-dark);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(82, 196, 26, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-settle-debt:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 14px rgba(82, 196, 26, 0.35);
+}
+
+.btn-settle-debt:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 6px rgba(82, 196, 26, 0.15);
+}
+
 
 

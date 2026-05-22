@@ -14,7 +14,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230b0b10'/><circle cx='50' cy='50' r='30' fill='none' stroke='%23ff7a45' stroke-width='8'/><path d='M35 50 L45 60 L65 40' fill='none' stroke='%23ffc069' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./style.css?v=3.5">
+  <link rel="stylesheet" href="./style.css?v=4.0">
 </head>
 <body>
 
@@ -240,6 +240,34 @@
       <!-- Populated dynamically via dialog show functions -->
     </div>
 
+    <!-- Custom Confirm Dialog Modal -->
+    <div class="dialog-overlay" id="custom-confirm-overlay">
+      <div class="dialog" id="custom-confirm-dialog">
+        <h3 class="dialog-title" id="custom-confirm-title">標題</h3>
+        <p class="dialog-desc" id="custom-confirm-desc">描述內容</p>
+        <div class="dialog-buttons">
+          <button class="btn-secondary" id="btn-confirm-cancel">取消</button>
+          <button class="btn-primary" id="btn-confirm-ok">確定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Prompt Dialog Drawer -->
+    <div class="dialog-overlay" id="custom-prompt-overlay">
+      <div class="dialog" id="custom-prompt-dialog">
+        <h3 class="dialog-title" id="custom-prompt-title">標題</h3>
+        <p class="dialog-desc" id="custom-prompt-desc">描述內容</p>
+        <div class="form-group">
+          <label class="form-label" id="custom-prompt-label">輸入標籤</label>
+          <input type="text" id="custom-prompt-input" class="drawer-text-input" autocomplete="off">
+        </div>
+        <div class="dialog-buttons">
+          <button class="btn-secondary" id="btn-prompt-cancel">取消</button>
+          <button class="btn-primary" id="btn-prompt-ok">確定</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 7. Micro toast notification display -->
     <div class="toast" id="toast">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -249,6 +277,6 @@
   </div>
 
   <!-- Scripts -->
-  <script src="./app.js?v=3.5"></script>
+  <script src="./app.js?v=5.0"></script>
 </body>
 </html>

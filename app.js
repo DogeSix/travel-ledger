@@ -45,14 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
   loadData();
   setupEventListeners();
   
-  // Intercept and handle room queries for cloud syncing (Lightsplit clone)
-  if (checkURLRoomQuery()) {
-    return; // Stop standard view setup, as checkURLRoomQuery handles asynchronous loading UI
-  }
-  
   switchView('dashboard');
   renderApp();
-  startCloudSyncPolling(); // Start background sync polling if active trip is connected
   
   // Register service worker if available for PWA support
   if ('serviceWorker' in navigator) {
@@ -185,12 +179,6 @@ function saveData() {
   localStorage.setItem('travel_trips', JSON.stringify(trips));
   if (activeTripId) {
     localStorage.setItem('travel_active_trip_id', activeTripId);
-    
-    // Auto sync push to cloud if active trip is synced
-    const trip = getActiveTrip();
-    if (trip && trip.cloudRoomId) {
-      syncPushCloud();
-    }
   } else {
     localStorage.removeItem('travel_active_trip_id');
   }
@@ -208,8 +196,7 @@ function renderApp() {
   // Render header trip title
   const tripBadge = document.getElementById('current-trip-badge');
   if (trip) {
-    const syncDot = trip.cloudRoomId ? `<span class="sync-indicator-dot" title="雲端即時同步中"></span>` : '';
-    tripBadge.innerHTML = `✈️ ${trip.name}${syncDot}`;
+    tripBadge.innerHTML = `✈️ ${trip.name}`;
     document.getElementById('fab-add').style.display = 'flex';
   } else {
     tripBadge.innerHTML = `➕ 點擊新增旅程`;
@@ -225,6 +212,7 @@ function renderApp() {
 
 // Navigation controller
 function switchView(viewName) {
+  playClickSound();
   activeView = viewName;
   
   // Dynamic Header Back button controller for native app feeling
@@ -292,6 +280,15 @@ function renderDashboard() {
   const remainingCashForeign = totalWithdrawn - cashSpentForeign;
   const remainingCashBase = Math.round(remainingCashForeign * trip.exchangeRate);
 
+  const waterPct = totalWithdrawn > 0 ? Math.round((remainingCashForeign / totalWithdrawn) * 100) : 0;
+  const waterPctClamped = Math.max(0, Math.min(100, waterPct));
+  let waterClass = '';
+  if (waterPctClamped < 10) {
+    waterClass = 'danger';
+  } else if (waterPctClamped < 30) {
+    waterClass = 'warning';
+  }
+
   // Daily Allowance Calculation
   // 使用 parseLocalDate 精確解析日期，並將時間部分設為 0 以便進行日期比對
   const start = parseLocalDate(trip.startDate);
@@ -355,6 +352,11 @@ function renderDashboard() {
   const splitSpentBase = trip.transactions.filter(t => t.paymentMethod === 'split').reduce((acc, t) => acc + t.amountBase, 0);
   const cashSpentBase = trip.transactions.filter(t => t.paymentMethod === 'cash').reduce((acc, t) => acc + t.amountBase, 0);
 
+  const cashPct = totalSpentBase > 0 ? Math.round(cashSpentBase / totalSpentBase * 100) : 0;
+  const cardPct = totalSpentBase > 0 ? Math.round(cardSpentBase / totalSpentBase * 100) : 0;
+  const splitPct = totalSpentBase > 0 ? 100 - cashPct - cardPct : 0;
+  const splitPctClamped = Math.max(0, splitPct);
+
   // Render dynamic dashboard HTML
   const dashHtml = `
     <!-- Trip Budget Overview Card -->
@@ -411,8 +413,17 @@ function renderDashboard() {
         <div class="detail-value ${remainingCashForeign < 0 ? 'danger' : 'accent'}">
           ${remainingCashForeign.toLocaleString()} <span>${trip.foreignCurrency}</span>
         </div>
-        <div class="detail-sub">
+        <div class="detail-sub" style="margin-bottom: 6px;">
           約合 NT$ ${remainingCashBase.toLocaleString()}
+        </div>
+        <div class="wallet-water-wrapper" title="手頭現金水位：${waterPct}%">
+          <div class="wallet-water-track">
+            <div class="wallet-water-fill ${waterClass}" style="width: ${waterPctClamped}%"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
+            <span>手頭現金水位</span>
+            <span>${waterPct}%</span>
+          </div>
         </div>
       </div>
       
@@ -462,22 +473,30 @@ function renderDashboard() {
 
     <!-- Payment Methods Analysis -->
     <div class="card" style="padding: 16px 20px;">
-      <div class="card-title" style="margin-bottom: 8px;">支付管道佔比</div>
+      <div class="card-title" style="margin-bottom: 4px;">支付管道佔比</div>
+      
+      <div class="segmented-bar-container">
+        ${cashPct > 0 ? `<div class="segmented-bar-segment cash" style="width: ${cashPct}%" title="現金: ${cashPct}%"></div>` : ''}
+        ${cardPct > 0 ? `<div class="segmented-bar-segment card" style="width: ${cardPct}%" title="刷卡: ${cardPct}%"></div>` : ''}
+        ${splitPctClamped > 0 ? `<div class="segmented-bar-segment split" style="width: ${splitPctClamped}%" title="多人拆帳: ${splitPctClamped}%"></div>` : ''}
+        ${totalSpentBase === 0 ? `<div style="width: 100%; height: 100%; background-color: rgba(255,255,255,0.05);"></div>` : ''}
+      </div>
+
       <div style="display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); justify-content: space-between; align-items: center; margin-top: 10px;">
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--secondary); margin-bottom: 4px;"></div>
           <span>現金現鈔</span>
-          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${totalSpentBase > 0 ? Math.round(cashSpentBase / totalSpentBase * 100) : 0}%</strong>
+          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${cashPct}%</strong>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent); margin-bottom: 4px;"></div>
           <span>信用卡</span>
-          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${totalSpentBase > 0 ? Math.round(cardSpentBase / totalSpentBase * 100) : 0}%</strong>
+          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${cardPct}%</strong>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div style="width: 8px; height: 8px; border-radius: 50%; background-color: #b37feb; margin-bottom: 4px;"></div>
           <span>拆帳分算</span>
-          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${totalSpentBase > 0 ? Math.round(splitSpentBase / totalSpentBase * 100) : 0}%</strong>
+          <strong style="color: var(--text-main); font-size: 13px; margin-top: 2px;">${totalSpentBase > 0 ? 100 - cashPct - cardPct : 0}%</strong>
         </div>
       </div>
     </div>
@@ -572,25 +591,34 @@ function renderLedger() {
       }
 
       html += `
-        <div class="ledger-item" onclick="editTransaction('${t.id}')">
-          <div class="ledger-icon-box ${cat.class}">${cat.icon}</div>
-          <div class="ledger-info">
-            <div class="ledger-meta">
-              <span class="ledger-category">${cat.name}</span>
-              <span class="ledger-paymethod ${payClass}">${payMethodStr}</span>
+        <div class="ledger-swipe-container" data-tx-id="${t.id}">
+          <div class="ledger-swipe-content" onclick="editTransaction('${t.id}')">
+            <div class="ledger-icon-box ${cat.class}">${cat.icon}</div>
+            <div class="ledger-info">
+              <div class="ledger-meta">
+                <span class="ledger-category">${cat.name}</span>
+                <span class="ledger-paymethod ${payClass}">${payMethodStr}</span>
+              </div>
+              <div class="ledger-desc">${t.desc || '（無備註內容）'}</div>
+              <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${t.date} · 由 ${getPayerDisplayName(t.payer || '我', myIdentity)} 付款</div>
             </div>
-            <div class="ledger-desc">${t.desc || '（無備註內容）'}</div>
-            <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${t.date} · 由 ${getPayerDisplayName(t.payer || '我', myIdentity)} 付款</div>
+            <div class="ledger-amounts">
+              <div class="ledger-amount-base" style="font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--text-main);">${t.amountForeign.toLocaleString()} <span style="font-size: 11px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span></div>
+              <div class="ledger-amount-foreign" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NT$ ${t.amountBase.toLocaleString()}</div>
+            </div>
           </div>
-          <div class="ledger-amounts">
-            <div class="ledger-amount-base" style="font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--text-main);">${t.amountForeign.toLocaleString()} <span style="font-size: 11px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span></div>
-            <div class="ledger-amount-foreign" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NT$ ${t.amountBase.toLocaleString()}</div>
+          <div class="ledger-swipe-action-delete" onclick="confirmDeleteTransaction('${t.id}', event)">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            刪除
+          </div>
+        </div>
       `;
     });
     html += `</div>`;
   }
 
   ledgerContainer.innerHTML = html;
+  initLedgerSwipeToDelete();
 }
 
 // Render 3: Split Bill View
@@ -606,49 +634,6 @@ function renderSplitBill() {
   const companions = trip.companions || [];
   const settlements = calculateSettlements(trip);
   const myIdentity = getMyIdentity(trip);
-
-  const isSynced = !!trip.cloudRoomId;
-  const syncRoomId = trip.cloudRoomId || '';
-  
-  let cloudCardHtml = '';
-  if (isSynced) {
-    cloudCardHtml = `
-      <!-- Cloud Sync Active State Card -->
-      <div class="card" style="border-color: rgba(7, 193, 96, 0.3); background: linear-gradient(135deg, #0e1e13 0%, #060e0a 100%);">
-        <div class="card-title" style="color: #07c160; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-          <span>💬</span> LINE 雲端即時同步中
-          <span style="font-size: 11px; background: rgba(7,193,96,0.1); color: #07c160; padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-left: auto;">房號: ${syncRoomId}</span>
-        </div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
-          此帳本已成功連接雲端！好友在 LINE 內點擊下方專屬連結即可加入。往後任何人的新增修改都會在背景秒級自動同步更新，操作體驗與 Lightsplit 完全一致！
-        </p>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-primary" onclick="shareActiveTripToLINE()" style="flex: 2; background: #07c160; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: 14px; border: none; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(7, 193, 96, 0.25);">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-            邀請好友加入
-          </button>
-          <button class="btn-primary" onclick="manualSyncPullCloud()" id="btn-manual-sync" style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #f0f0f5; display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; border-radius: 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;">
-            <span id="sync-icon-spin" style="display: inline-block;">🔄</span> 立即同步
-          </button>
-        </div>
-      </div>
-    `;
-  } else {
-    cloudCardHtml = `
-      <!-- Cloud Sync Inactive State Card -->
-      <div class="card" style="border-color: rgba(255, 255, 255, 0.05); background: linear-gradient(135deg, #12121c 0%, #0c0c12 100%);">
-        <div class="card-title" style="color: var(--secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-          <span>💬</span> 共同記帳與 LINE 邀請 (像 Lightsplit)
-        </div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
-          想和旅伴一起記帳嗎？點擊下方按鈕，一鍵開啟雲端多人共同記帳！系統會為您開啟專屬雲端房號，並能產生專屬連結，讓好友點擊即可加入，任何消費秒級同步！
-        </p>
-        <button class="btn-primary" onclick="enableCloudSync()" style="background: linear-gradient(135deg, var(--primary) 0%, #ff4d4f 100%); color: white; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; border-radius: 14px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 122, 69, 0.25);">
-          🌐 開啟 Lightsplit 雲端同步共同記帳
-        </button>
-      </div>
-    `;
-  }
 
   let html = `
     <!-- Split Bill Balance Card -->
@@ -668,18 +653,21 @@ function renderSplitBill() {
             <div class="split-matrix-who">
               <strong>${s.debtor === myIdentity ? `${s.debtor} (我)` : (s.debtor === '我' ? '記帳發起人' : s.debtor)}</strong> <span>👉</span> <strong>${s.creditor === myIdentity ? `${s.creditor} (我)` : (s.creditor === '我' ? '記帳發起人' : s.creditor)}</strong>
             </div>
-            <div class="split-matrix-amount" style="color: var(--accent); font-weight: 700; font-family: var(--font-title); text-align: right;">
-              ${Math.round(s.amount).toLocaleString()} <span style="font-size: 10px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span>
-              <div style="font-size: 9px; color: var(--text-muted); text-align: right; font-weight: normal; margin-top: 2px;">
-                NT$ ${Math.round(s.amount * trip.exchangeRate).toLocaleString()}
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="split-matrix-amount" style="color: var(--accent); font-weight: 700; font-family: var(--font-title); text-align: right;">
+                ${Math.round(s.amount).toLocaleString()} <span style="font-size: 10px; font-weight: 500; color: var(--text-muted);">${trip.foreignCurrency}</span>
+                <div style="font-size: 9px; color: var(--text-muted); text-align: right; font-weight: normal; margin-top: 2px;">
+                  NT$ ${Math.round(s.amount * trip.exchangeRate).toLocaleString()}
+                </div>
               </div>
+              <button class="btn-settle-debt" onclick="settleSplitDebt('${s.debtor}', '${s.creditor}', ${s.amount})">
+                💵 結清
+              </button>
             </div>
           </div>
         `).join('')}
       </div>
     </div>
-
-    ${cloudCardHtml}
 
     <!-- Companions management -->
     <div class="card">
@@ -906,7 +894,7 @@ function renderSettings() {
   // App Footer / Version
   html += `
     <div style="text-align: center; margin-top: 30px; margin-bottom: 15px; color: var(--text-muted); font-size: 11px;">
-      <p>✈️ 出國記帳 PWA 離線工具 v3.5</p>
+      <p>✈️ 出國記帳 PWA 離線工具 v4.0</p>
       <p style="margin-top: 5px; opacity: 0.6;">極致精簡 · 離線優先 · 智能平攤</p>
     </div>
   `;
@@ -1075,6 +1063,187 @@ function initSwipeToDelete() {
 }
 
 // -------------------------------------------------------------
+// Swipe to delete touch and pointer event gesture handlers for Ledger Transactions
+function initLedgerSwipeToDelete() {
+  const containers = document.querySelectorAll('.ledger-swipe-container');
+  containers.forEach(container => {
+    const content = container.querySelector('.ledger-swipe-content');
+    const deleteBtn = container.querySelector('.ledger-swipe-action-delete');
+    if (!content || !deleteBtn) return;
+
+    let startX = 0;
+    let startY = 0;
+    let isSwiping = false;
+    const maxSwipe = -80;
+
+    content.addEventListener('touchstart', (e) => {
+      document.querySelectorAll('.ledger-swipe-container.swipe-open').forEach(el => {
+        if (el !== container) {
+          const c = el.querySelector('.ledger-swipe-content');
+          const d = el.querySelector('.ledger-swipe-action-delete');
+          if (c && d) {
+            c.style.transition = 'transform 0.2s ease';
+            d.style.transition = 'transform 0.2s ease';
+            c.style.transform = 'translateX(0px)';
+            d.style.transform = 'translateX(100%)';
+          }
+          el.classList.remove('swipe-open');
+        }
+      });
+
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      isSwiping = false;
+      content.style.transition = 'none';
+      deleteBtn.style.transition = 'none';
+    }, { passive: true });
+
+    content.addEventListener('touchmove', (e) => {
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      const diffX = touchX - startX;
+      const diffY = touchY - startY;
+
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+        isSwiping = true;
+        if (diffX < 0) {
+          let moveX = diffX;
+          if (moveX < maxSwipe) {
+            moveX = maxSwipe + (moveX - maxSwipe) * 0.2;
+          }
+          content.style.transform = `translateX(${moveX}px)`;
+          deleteBtn.style.transform = `translateX(calc(100% + ${moveX}px))`;
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+        }
+      }
+    }, { passive: true });
+
+    content.addEventListener('touchend', (e) => {
+      if (!isSwiping) return;
+      const changeX = e.changedTouches[0].clientX - startX;
+      content.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      deleteBtn.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+      if (changeX < -35) {
+        content.style.transform = `translateX(${maxSwipe}px)`;
+        deleteBtn.style.transform = `translateX(0px)`;
+        container.classList.add('swipe-open');
+      } else {
+        content.style.transform = `translateX(0px)`;
+        deleteBtn.style.transform = `translateX(100%)`;
+        container.classList.remove('swipe-open');
+      }
+      startX = 0;
+      startY = 0;
+    });
+
+    content.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      isSwiping = false;
+      content.style.transition = 'none';
+      deleteBtn.style.transition = 'none';
+    });
+
+    content.addEventListener('pointermove', (e) => {
+      if (startX === 0) return;
+      const diffX = e.clientX - startX;
+      const diffY = e.clientY - startY;
+
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+        isSwiping = true;
+        try { content.setPointerCapture(e.pointerId); } catch(err){}
+        if (diffX < 0) {
+          let moveX = diffX;
+          if (moveX < maxSwipe) {
+            moveX = maxSwipe + (moveX - maxSwipe) * 0.2;
+          }
+          content.style.transform = `translateX(${moveX}px)`;
+          deleteBtn.style.transform = `translateX(calc(100% + ${moveX}px))`;
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+        }
+      }
+    });
+
+    content.addEventListener('pointerup', (e) => {
+      try { content.releasePointerCapture(e.pointerId); } catch(err){}
+      if (startX === 0) return;
+      const changeX = e.clientX - startX;
+      if (isSwiping) {
+        content.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        deleteBtn.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+        if (changeX < -35) {
+          content.style.transform = `translateX(${maxSwipe}px)`;
+          deleteBtn.style.transform = `translateX(0px)`;
+          container.classList.add('swipe-open');
+        } else {
+          content.style.transform = `translateX(0px)`;
+          deleteBtn.style.transform = `translateX(100%)`;
+          container.classList.remove('swipe-open');
+        }
+      }
+      startX = 0;
+      startY = 0;
+    });
+
+    content.addEventListener('pointercancel', (e) => {
+      try { content.releasePointerCapture(e.pointerId); } catch(err){}
+      content.style.transition = 'transform 0.2s ease';
+      deleteBtn.style.transition = 'transform 0.2s ease';
+      content.style.transform = 'translateX(0px)';
+      deleteBtn.style.transform = 'translateX(100%)';
+      container.classList.remove('swipe-open');
+      startX = 0;
+      startY = 0;
+    });
+  });
+}
+
+async function confirmDeleteTransaction(txId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  playClickSound();
+
+  const trip = getActiveTrip();
+  if (!trip) return;
+  const tx = trip.transactions.find(t => t.id === txId);
+  if (!tx) return;
+
+  const ok = await showCustomConfirm(
+    '🗑️ 刪除記帳項目',
+    `確定要刪除 「${tx.desc || '未命名消費'}」 嗎？此操作將無法還原。`
+  );
+
+  if (ok) {
+    trip.transactions = trip.transactions.filter(t => t.id !== txId);
+    saveData();
+    renderApp();
+    showToast('🗑️ 交易已成功刪除');
+  } else {
+    const container = document.querySelector(`.ledger-swipe-container[data-tx-id="${txId}"]`);
+    if (container) {
+      const content = container.querySelector('.ledger-swipe-content');
+      const deleteBtn = container.querySelector('.ledger-swipe-action-delete');
+      if (content && deleteBtn) {
+        content.style.transition = 'transform 0.2s ease';
+        deleteBtn.style.transition = 'transform 0.2s ease';
+        content.style.transform = 'translateX(0px)';
+        deleteBtn.style.transform = 'translateX(100%)';
+      }
+      container.classList.remove('swipe-open');
+    }
+  }
+}
+
+// -------------------------------------------------------------
 // Swipe to delete touch and pointer event gesture handlers for Trips removed.
 
 
@@ -1082,6 +1251,7 @@ function initSwipeToDelete() {
 // Transaction Adding & Drawer Functionality
 
 function showAddExpenseDrawer() {
+  playClickSound();
   const trip = getActiveTrip();
   if (!trip) return;
   
@@ -1367,8 +1537,9 @@ function saveTransaction() {
   let paymentMethod = activeMethodEl ? activeMethodEl.dataset.method : 'cash';
   
   // Multi-party Split calculation
-  let payer = '我';
-  let splitWith = ['我'];
+  const myIdentity = getMyIdentity(trip);
+  let payer = myIdentity;
+  let splitWith = [myIdentity];
   
   if (paymentMethod === 'split') {
     payer = document.getElementById('drawer-payer-select').value;
@@ -1409,6 +1580,7 @@ function saveTransaction() {
 }
 
 function editTransaction(txId) {
+  playClickSound();
   const trip = getActiveTrip();
   if (!trip) return;
   
@@ -1501,12 +1673,16 @@ function addCompanion() {
   renderApp();
 }
 
-function removeCompanion(name) {
+async function removeCompanion(name) {
   const trip = getActiveTrip();
   if (!trip) return;
   
   // Confirm deletion safety check
-  if (confirm(`確定要將旅伴 「${name}」 移出群組嗎？他所有的拆帳項目會被保留，但不能新增含有他的新項目。`)) {
+  const isConfirmed = await showCustomConfirm(
+    '確認移除旅伴',
+    `確定要將旅伴 「${name}」 移出群組嗎？他所有的拆帳項目會被保留，但不能新增含有他的新項目。`
+  );
+  if (isConfirmed) {
     trip.companions = trip.companions.filter(c => c !== name);
     showToast(`🗑️ 已移除旅伴：${name}`);
     saveData();
@@ -1642,20 +1818,66 @@ function calculateSettlements(trip) {
   return settlements;
 }
 
+async function settleSplitDebt(debtor, creditor, amount) {
+  playClickSound();
+  const trip = getActiveTrip();
+  if (!trip) return;
+
+  const myIdentity = getMyIdentity(trip);
+
+  const debtorDisp = debtor === myIdentity ? `${debtor} (我)` : debtor;
+  const creditorDisp = creditor === myIdentity ? `${creditor} (我)` : creditor;
+
+  const ok = await showCustomConfirm(
+    '💵 旅伴債務結清',
+    `確定要記錄這筆結清款項嗎？\n\n成員 「${debtorDisp}」 已支付給 「${creditorDisp}」 共計 ${Math.round(amount).toLocaleString()} ${trip.foreignCurrency} (約合 NT$ ${Math.round(amount * trip.exchangeRate).toLocaleString()})。\n\n系統將自動在帳本中新增一筆互補的記帳以扣抵此債務。`
+  );
+
+  if (!ok) return;
+
+  const rate = trip.exchangeRate;
+  const amountForeign = amount;
+  const amountBase = Math.round(amount * rate);
+  const date = getFormattedCurrentTime();
+
+  const settlementTx = {
+    id: 'tx-' + Date.now(),
+    date,
+    amountForeign,
+    amountBase,
+    category: 'others',
+    paymentMethod: 'split',
+    desc: `💵 拆帳結清：${debtor} 結清給 ${creditor}`,
+    payer: debtor,
+    splitWith: [creditor],
+    updatedAt: Date.now()
+  };
+
+  trip.transactions.push(settlementTx);
+  showToast('💵 債務已成功結清並記錄！');
+  saveData();
+  renderApp();
+}
+
 // -------------------------------------------------------------
 // PWA Cash Wallet Withdrawals
 
-function showCashWithdrawalDrawer() {
+async function showCashWithdrawalDrawer() {
   const trip = getActiveTrip();
   if (!trip) return;
   
   // Prompt user for amount using native popup for simplicity and security
-  const amountStr = prompt(`請輸入提領/兌換的 [${trip.foreignCurrency}] 金額：\n(這將增加您的錢包現金水位，可用於現金支付)`);
-  if (!amountStr) return;
+  const amountStr = await showCustomPrompt(
+    '提領 / 儲備外幣現金',
+    `這將增加您的錢包現金水位，可用於後續記帳選擇現金付款方式。`,
+    `請輸入提領/兌換的 [${trip.foreignCurrency}] 金額`,
+    ''
+  );
+  if (amountStr === null || amountStr === '') return;
   
   const amt = parseFloat(amountStr);
   if (isNaN(amt) || amt <= 0) {
-    alert('❌ 請輸入大於 0 的有效數字金額！');
+    await showCustomConfirm('輸入無效', '❌ 請輸入大於 0 的有效數字金額！', true);
     return;
   }
   
@@ -1838,7 +2060,7 @@ function showEditTripDialog() {
   overlay.classList.add('active');
 }
 
-function editTripSubmit() {
+async function editTripSubmit() {
   const trip = getActiveTrip();
   if (!trip) return;
   
@@ -1850,7 +2072,7 @@ function editTripSubmit() {
   const endDate = document.getElementById('edit-trip-end').value;
 
   if (!name || !foreignCurrency) {
-    alert('❌ 請填寫完整的旅程名稱與外幣代號！');
+    await showCustomConfirm('輸入有誤', '❌ 請填寫完整的旅程名稱與外幣代號！', true);
     return;
   }
 
@@ -1866,7 +2088,11 @@ function editTripSubmit() {
   trip.endDate = endDate;
 
   if (rateChanged) {
-    if (confirm(`偵測到幣別或匯率已變更！\n是否要將現有所有外幣記帳明細，依新匯率 (${exchangeRate}) 重新計算折合台幣 (TWD) 的金額？\n\n(選擇「確定」會重新校正過往台幣金額；選擇「取消」則僅套用至之後的新增記帳)`)) {
+    const isConfirmed = await showCustomConfirm(
+      '匯率變更提示',
+      `偵測到幣別或匯率已變更！\n是否要將現有所有外幣記帳明細，依新匯率 (${exchangeRate}) 重新計算折合台幣 (TWD) 的金額？\n\n(選擇「確定」會重新校正過往台幣金額；選擇「取消」則僅套用至之後的新增記帳)`
+    );
+    if (isConfirmed) {
       trip.transactions.forEach(t => {
         t.amountBase = Math.round(t.amountForeign * exchangeRate);
       });
@@ -1884,7 +2110,7 @@ function editTripSubmit() {
   showToast('📝 旅程資訊修改成功！');
 }
 
-function createTripSubmit() {
+async function createTripSubmit() {
   const name = document.getElementById('new-trip-name').value.trim();
   const foreignCurrency = document.getElementById('new-trip-foreign').value.trim().toUpperCase();
   const currencySelect = document.getElementById('new-trip-currency-select');
@@ -1897,7 +2123,7 @@ function createTripSubmit() {
   const endDate = document.getElementById('new-trip-end').value;
 
   if (!name || !foreignCurrency) {
-    alert('❌ 請填寫完整的旅程名稱與外幣代號！');
+    await showCustomConfirm('輸入有誤', '❌ 請填寫完整的旅程名稱與外幣代號！', true);
     return;
   }
 
@@ -1946,17 +2172,20 @@ function switchTrip(tripId) {
   activeTripId = tripId;
   saveData();
   renderApp();
-  startCloudSyncPolling(); // Restart polling for the active trip
   showToast('🗺️ 已切換旅程記帳本');
 }
 
-function confirmDeleteTripById(tripId, event) {
+async function confirmDeleteTripById(tripId, event) {
   if (event) event.stopPropagation(); // Stop click bubbling to switchTrip
   
   const tripToDelete = trips.find(t => t.id === tripId);
   if (!tripToDelete) return;
   
-  if (confirm(`🚨 警告！你即將永久刪除 「${tripToDelete.name}」 旅程記帳本。\n此動作將不可逆，所有消費明細與拆帳記錄都將消失！是否確認刪除？`)) {
+  const isConfirmed = await showCustomConfirm(
+    '刪除旅程確認',
+    `🚨 警告！你即將永久刪除 「${tripToDelete.name}」 旅程記帳本。\n此動作將不可逆，所有消費明細與拆帳記錄都將消失！是否確認刪除？`
+  );
+  if (isConfirmed) {
     trips = trips.filter(t => t.id !== tripId);
     if (activeTripId === tripId) {
       if (trips.length > 0) {
@@ -1985,23 +2214,32 @@ function confirmDeleteTripById(tripId, event) {
   }
 }
 
-function editExchangeRate() {
+async function editExchangeRate() {
   const trip = getActiveTrip();
   if (!trip) return;
   
-  const newRateStr = prompt(`請輸入新的鎖定匯率：\n(1 ${trip.foreignCurrency} 等於多少 ${trip.baseCurrency})`, trip.exchangeRate);
-  if (!newRateStr) return;
+  const newRateStr = await showCustomPrompt(
+    '修改鎖定匯率',
+    `請輸入新的鎖定匯率：\n(1 ${trip.foreignCurrency} 等於多少 ${trip.baseCurrency})`,
+    '外幣匯率',
+    trip.exchangeRate
+  );
+  if (newRateStr === null || newRateStr === '') return;
   
   const rate = parseFloat(newRateStr);
   if (isNaN(rate) || rate <= 0) {
-    alert('❌ 請輸入大於 0 的有效數字匯率！');
+    await showCustomConfirm('輸入有誤', '❌ 請輸入大於 0 的有效數字匯率！', true);
     return;
   }
   
   trip.exchangeRate = rate;
   
   // Recalculate transaction base currency values based on new rate
-  if (confirm('是否將已記帳的外幣項目，以新匯率重新計算台幣總額？\n(取消則僅影響之後記的新項目)')) {
+  const isConfirmed = await showCustomConfirm(
+    '重新計算台幣總額',
+    '是否將已記帳的外幣項目，以新匯率重新計算台幣總額？\n(取消則僅影響之後記的新項目)'
+  );
+  if (isConfirmed) {
     trip.transactions.forEach(t => {
       if (t.paymentMethod !== 'split') { // Standard single payments
         t.amountBase = Math.round(t.amountForeign * rate);
@@ -2014,16 +2252,21 @@ function editExchangeRate() {
   showToast('💹 匯率修改成功！');
 }
 
-function editTripBudget() {
+async function editTripBudget() {
   const trip = getActiveTrip();
   if (!trip) return;
   
-  const newBudgetStr = prompt(`請輸入此旅程的全新預算 (TWD)：`, trip.budget);
-  if (!newBudgetStr) return;
+  const newBudgetStr = await showCustomPrompt(
+    '修改旅程預算',
+    `請輸入此旅程的全新預算 (TWD)：`,
+    '旅程預算 (TWD)',
+    trip.budget
+  );
+  if (newBudgetStr === null || newBudgetStr === '') return;
   
   const budget = Math.round(parseFloat(newBudgetStr));
   if (isNaN(budget) || budget <= 0) {
-    alert('❌ 請輸入有效金額！');
+    await showCustomConfirm('輸入有誤', '❌ 請輸入有效金額！', true);
     return;
   }
   
@@ -2033,11 +2276,15 @@ function editTripBudget() {
   showToast('💰 預算修改成功！');
 }
 
-function confirmDeleteTrip() {
+async function confirmDeleteTrip() {
   const trip = getActiveTrip();
   if (!trip) return;
   
-  if (confirm(`🚨 警告！你即將永久刪除 「${trip.name}」 旅程記帳本。\n此動作將不可逆，所有消費明細與拆帳記錄都將消失！是否確認刪除？`)) {
+  const isConfirmed = await showCustomConfirm(
+    '刪除旅程確認',
+    `🚨 警告！你即將永久刪除 「${trip.name}」 旅程記帳本。\n此動作將不可逆，所有消費明細與拆帳記錄都將消失！是否確認刪除？`
+  );
+  if (isConfirmed) {
     trips = trips.filter(t => t.id !== activeTripId);
     if (trips.length > 0) {
       activeTripId = trips[0].id;
@@ -2050,18 +2297,18 @@ function confirmDeleteTrip() {
   }
 }
 
-function clearAllAppData() {
-  const firstConfirm = confirm("🚨 警告！你即將刪除此 APP 在這台裝置上的所有本機資料（包括所有旅程、所有消費明細與拆帳記錄）。\n此操作將不可逆！是否確認刪除？");
+async function clearAllAppData() {
+  const firstConfirm = await showCustomConfirm(
+    '重設所有本機資料警告',
+    "🚨 警告！你即將刪除此 APP 在這台裝置上的所有本機資料（包括所有旅程、所有消費明細與拆帳記錄）。\n此操作將不可逆！是否確認刪除？"
+  );
   if (!firstConfirm) return;
 
-  const secondConfirm = confirm("⚠️ 請再次確認！這會徹底清空這台裝置的本機快取與所有設定。\n若您沒有下載備份，資料將會永久消失。確定真的要刪除全部本機資料嗎？");
+  const secondConfirm = await showCustomConfirm(
+    '徹底清除確認',
+    "⚠️ 請再次確認！這會徹底清空這台裝置的本機快取與所有設定。\n若您沒有下載備份，資料將會永久消失。確定真的要刪除全部本機資料嗎？"
+  );
   if (!secondConfirm) return;
-
-  // Stop background sync polling if active
-  if (syncIntervalId) {
-    clearInterval(syncIntervalId);
-    syncIntervalId = null;
-  }
 
   // Gather keys to delete
   const keysToRemove = [];
@@ -2636,11 +2883,15 @@ function importTripJSON(event) {
   if (!file) return;
   
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       const imported = JSON.parse(e.target.result);
       if (Array.isArray(imported)) {
-        if (confirm('是否將匯入的旅程合併至您現有的記帳本中？\n(選擇「取消」將會覆蓋您目前的全部帳目喔！)')) {
+        const isConfirmed = await showCustomConfirm(
+          '備份還原合併確認',
+          '是否將匯入的旅程合併至您現有的記帳本中？\n(選擇「取消」將會覆蓋您目前的全部帳目喔！)'
+        );
+        if (isConfirmed) {
           trips = [...trips, ...imported];
         } else {
           trips = imported;
@@ -2650,10 +2901,10 @@ function importTripJSON(event) {
         renderApp();
         showToast('📥 備份還原成功！');
       } else {
-        alert('❌ 檔案格式錯誤，必須為旅程 JSON 陣列！');
+        await showCustomConfirm('格式錯誤', '❌ 檔案格式錯誤，必須為旅程 JSON 陣列！', true);
       }
     } catch (err) {
-      alert('❌ 無法讀取此檔案，請確認 JSON 格式是否正確！');
+      await showCustomConfirm('讀取失敗', '❌ 無法讀取此檔案，請確認 JSON 格式是否正確！', true);
     }
   };
   reader.readAsText(file);
@@ -2676,21 +2927,120 @@ function playClickSound() {
     const gain = audioCtx.createGain();
     
     osc.type = 'sine';
-    // Short high-pitched mechanical click sweep
-    osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.04);
+    // Organic wooden haptic click sweep (extremely short, mimicking mobile haptic engine)
+    osc.frequency.setValueAtTime(2200, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.015);
     
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime); // Subtle volume
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.06, audioCtx.currentTime); // Subtle volume
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.015);
     
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.04);
+    osc.stop(audioCtx.currentTime + 0.015);
   } catch (e) {
     console.log('AudioContext haptic click error:', e);
   }
+}
+
+// Promise-based Custom Premium Confirm Dialog Modal
+function showCustomConfirm(title, desc, isAlert = false) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('custom-confirm-overlay');
+    const titleEl = document.getElementById('custom-confirm-title');
+    const descEl = document.getElementById('custom-confirm-desc');
+    const cancelBtn = document.getElementById('btn-confirm-cancel');
+    const okBtn = document.getElementById('btn-confirm-ok');
+    
+    titleEl.innerText = title;
+    descEl.innerText = desc;
+    
+    if (isAlert) {
+      cancelBtn.style.display = 'none';
+    } else {
+      cancelBtn.style.display = '';
+    }
+    
+    overlay.classList.add('active');
+    
+    function cleanUp() {
+      overlay.classList.remove('active');
+      cancelBtn.removeEventListener('click', onCancel);
+      okBtn.removeEventListener('click', onOk);
+    }
+    
+    function onCancel() {
+      playClickSound();
+      cleanUp();
+      resolve(false);
+    }
+    
+    function onOk() {
+      playClickSound();
+      cleanUp();
+      resolve(true);
+    }
+    
+    cancelBtn.addEventListener('click', onCancel);
+    okBtn.addEventListener('click', onOk);
+  });
+}
+
+// Promise-based Custom Premium Prompt Dialog Drawer
+function showCustomPrompt(title, desc, label, defaultValue = '') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('custom-prompt-overlay');
+    const titleEl = document.getElementById('custom-prompt-title');
+    const descEl = document.getElementById('custom-prompt-desc');
+    const labelEl = document.getElementById('custom-prompt-label');
+    const inputEl = document.getElementById('custom-prompt-input');
+    const cancelBtn = document.getElementById('btn-prompt-cancel');
+    const okBtn = document.getElementById('btn-prompt-ok');
+    
+    titleEl.innerText = title;
+    descEl.innerText = desc;
+    labelEl.innerText = label;
+    inputEl.value = defaultValue;
+    
+    overlay.classList.add('active');
+    
+    // Focus input on load for immediate typing
+    setTimeout(() => {
+      inputEl.focus();
+      inputEl.select();
+    }, 150);
+    
+    function cleanUp() {
+      overlay.classList.remove('active');
+      cancelBtn.removeEventListener('click', onCancel);
+      okBtn.removeEventListener('click', onOk);
+    }
+    
+    function onCancel() {
+      playClickSound();
+      cleanUp();
+      resolve(null);
+    }
+    
+    function onOk() {
+      playClickSound();
+      const val = inputEl.value.trim();
+      cleanUp();
+      resolve(val);
+    }
+    
+    cancelBtn.addEventListener('click', onCancel);
+    okBtn.addEventListener('click', onOk);
+    
+    // Allow pressing Enter key to submit
+    inputEl.addEventListener('keydown', function onEnter(e) {
+      if (e.key === 'Enter') {
+        inputEl.removeEventListener('keydown', onEnter);
+        onOk();
+      }
+    });
+  });
 }
 
 function setupEventListeners() {
@@ -2711,6 +3061,7 @@ function setupEventListeners() {
   // Category pill selections inside drawer
   document.querySelectorAll('.category-pill').forEach(pill => {
     pill.addEventListener('click', (e) => {
+      playClickSound();
       document.querySelectorAll('.category-pill').forEach(el => el.classList.remove('active'));
       e.currentTarget.classList.add('active');
     });
@@ -2719,6 +3070,7 @@ function setupEventListeners() {
   // Payment method selection inside drawer
   document.querySelectorAll('#method-toggle .toggle-option').forEach(opt => {
     opt.addEventListener('click', (e) => {
+      playClickSound();
       document.querySelectorAll('#method-toggle .toggle-option').forEach(el => el.classList.remove('active'));
       const activeOpt = e.currentTarget;
       activeOpt.classList.add('active');
@@ -2822,16 +3174,17 @@ function showToast(msg) {
 }
 
 // -------------------------------------------------------------
-// Version 2.0 Collaborative Syncing & Lightsplit Engine (LINE integration)
+// Transaction Deletion
 
-function deleteTransactionFromDrawer() {
+async function deleteTransactionFromDrawer() {
   const trip = getActiveTrip();
   if (!trip || !editingTransactionId) return;
   
-  if (confirm('⚠️ 確定要刪除這筆記帳紀錄嗎？此動作將無法復原。')) {
-    if (!trip.deletedTxIds) trip.deletedTxIds = [];
-    trip.deletedTxIds.push(editingTransactionId);
-    
+  const isConfirmed = await showCustomConfirm(
+    '刪除記帳確認',
+    '⚠️ 確定要刪除這筆記帳紀錄嗎？此動作將無法復原。'
+  );
+  if (isConfirmed) {
     trip.transactions = trip.transactions.filter(t => t.id !== editingTransactionId);
     
     saveData();
@@ -2841,310 +3194,4 @@ function deleteTransactionFromDrawer() {
   }
 }
 
-async function enableCloudSync() {
-  const trip = getActiveTrip();
-  if (!trip) return;
-  
-  // Generate a random 6-character room code
-  const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-  trip.cloudRoomId = roomId;
-  
-  showToast('🌐 正在開啟雲端即時同步...');
-  
-  // Push the current trip to the cloud
-  const success = await syncPushCloud();
-  if (success) {
-    saveData();
-    renderApp();
-    startCloudSyncPolling(); // Start polling immediately
-    alert(`🎉 成功開啟 Lightsplit 雲端同步！\n您的專屬房號為：${roomId}\n\n現在您可以點擊「透過 LINE 分享」邀請好友共同記帳！`);
-  } else {
-    // Rollback
-    trip.cloudRoomId = null;
-    alert('❌ 無法連接到雲端伺服器，請檢查您的網路連線後再試一次！');
-  }
-}
 
-let isPushing = false;
-async function syncPushCloud() {
-  const trip = getActiveTrip();
-  if (!trip || !trip.cloudRoomId) return false;
-  
-  if (isPushing) return false;
-  isPushing = true;
-  
-  const roomId = trip.cloudRoomId;
-  const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
-  
-  try {
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(trip)
-    });
-    
-    if (response.ok) {
-      console.log(`Cloud sync push success for room ${roomId}`);
-      isPushing = false;
-      return true;
-    } else {
-      console.error(`Cloud sync push failed with status: ${response.status}`);
-    }
-  } catch (error) {
-    console.error('Cloud sync push network error:', error);
-  }
-  
-  isPushing = false;
-  return false;
-}
-
-let isPulling = false;
-async function syncPullCloud(quiet = false) {
-  const trip = getActiveTrip();
-  if (!trip || !trip.cloudRoomId) return false;
-  
-  if (isPulling) return false;
-  isPulling = true;
-  
-  const roomId = trip.cloudRoomId;
-  const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
-  
-  try {
-    const response = await fetch(url);
-    if (response.ok) {
-      const cloudTrip = await response.json();
-      if (cloudTrip && cloudTrip.id) {
-        // Merge cloud data into local trip
-        let hasChanges = false;
-        
-        // 1. Merge Companions (Union)
-        const localCompanions = trip.companions || [];
-        const cloudCompanions = cloudTrip.companions || [];
-        const mergedCompanions = Array.from(new Set([...localCompanions, ...cloudCompanions]));
-        if (JSON.stringify(trip.companions) !== JSON.stringify(mergedCompanions)) {
-          trip.companions = mergedCompanions;
-          hasChanges = true;
-        }
-        
-        // 2. Merge Deleted Transaction IDs (Union)
-        const localDeleted = trip.deletedTxIds || [];
-        const cloudDeleted = cloudTrip.deletedTxIds || [];
-        const mergedDeleted = Array.from(new Set([...localDeleted, ...cloudDeleted]));
-        if (JSON.stringify(trip.deletedTxIds) !== JSON.stringify(mergedDeleted)) {
-          trip.deletedTxIds = mergedDeleted;
-          hasChanges = true;
-        }
-        
-        // 3. Merge Transactions
-        const txMap = {};
-        const localTx = trip.transactions || [];
-        const cloudTx = cloudTrip.transactions || [];
-        
-        // Populate map with local transactions (excluding those marked as deleted)
-        localTx.forEach(t => {
-          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) return;
-          txMap[t.id] = t;
-        });
-        
-        // Merge cloud transactions
-        cloudTx.forEach(t => {
-          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) return;
-          const local = txMap[t.id];
-          if (!local) {
-            txMap[t.id] = t;
-            hasChanges = true;
-          } else {
-            // Compare updatedAt
-            const localTime = local.updatedAt || 0;
-            const cloudTime = t.updatedAt || 0;
-            if (cloudTime > localTime) {
-              txMap[t.id] = t;
-              hasChanges = true;
-            }
-          }
-        });
-        
-        // Re-filter local transactions that might have been deleted in cloud
-        const finalTransactions = [];
-        Object.values(txMap).forEach(t => {
-          if (trip.deletedTxIds && trip.deletedTxIds.includes(t.id)) {
-            hasChanges = true;
-            return;
-          }
-          finalTransactions.push(t);
-        });
-        
-        if (trip.transactions.length !== finalTransactions.length || hasChanges) {
-          trip.transactions = finalTransactions;
-          hasChanges = true;
-        }
-        
-        // 4. Merge Cash Withdrawals
-        const localWithdrawals = trip.cashWithdrawals || [];
-        const cloudWithdrawals = cloudTrip.cashWithdrawals || [];
-        const withdrawalMap = {};
-        localWithdrawals.forEach(w => { withdrawalMap[w.id] = w; });
-        cloudWithdrawals.forEach(w => {
-          if (!withdrawalMap[w.id]) {
-            withdrawalMap[w.id] = w;
-            hasChanges = true;
-          }
-        });
-        
-        if (trip.cashWithdrawals.length !== Object.keys(withdrawalMap).length) {
-          trip.cashWithdrawals = Object.values(withdrawalMap);
-          hasChanges = true;
-        }
-        
-        // 5. Merge basic attributes if changed
-        if (trip.name !== cloudTrip.name) { trip.name = cloudTrip.name; hasChanges = true; }
-        if (trip.budget !== cloudTrip.budget) { trip.budget = cloudTrip.budget; hasChanges = true; }
-        if (trip.exchangeRate !== cloudTrip.exchangeRate) { trip.exchangeRate = cloudTrip.exchangeRate; hasChanges = true; }
-        if (trip.startDate !== cloudTrip.startDate) { trip.startDate = cloudTrip.startDate; hasChanges = true; }
-        if (trip.endDate !== cloudTrip.endDate) { trip.endDate = cloudTrip.endDate; hasChanges = true; }
-        
-        if (hasChanges) {
-          // Save and push the fully merged state to cloud so everyone is in sync
-          saveData();
-          renderApp();
-          if (!quiet) showToast('🔄 帳本已與雲端同步更新');
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Cloud sync pull network error:', error);
-  }
-  
-  isPulling = false;
-  return true;
-}
-
-let syncIntervalId = null;
-function startCloudSyncPolling() {
-  if (syncIntervalId) {
-    clearInterval(syncIntervalId);
-    syncIntervalId = null;
-  }
-  
-  const trip = getActiveTrip();
-  if (trip && trip.cloudRoomId) {
-    console.log(`Starting cloud sync background polling for room: ${trip.cloudRoomId}`);
-    // Run initial pull silently
-    syncPullCloud(true);
-    
-    // Poll every 8 seconds
-    syncIntervalId = setInterval(() => {
-      syncPullCloud(true);
-    }, 8000);
-  }
-}
-
-function checkURLRoomQuery() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const roomId = urlParams.get('room');
-  
-  if (roomId) {
-    // Render beautiful premium fullscreen loader screen over app viewport
-    const loader = document.createElement('div');
-    loader.id = 'cloud-loading-screen';
-    loader.style = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100dvh;
-      background-color: #0b0b10;
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #f0f0f5;
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-    `;
-    loader.innerHTML = `
-      <div style="font-size: 48px; margin-bottom: 24px; animation: pulse 1.5s infinite ease-in-out;">✈️</div>
-      <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, #fff 30%, #ffc069 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">正在連線並同步 LINE 共同記帳本...</h3>
-      <p style="font-size: 13px; color: #8c8c9e;">房號：${roomId} · 請稍候</p>
-      <div style="margin-top: 30px; width: 40px; height: 40px; border: 3px solid rgba(255, 122, 69, 0.1); border-top-color: #ff7a45; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-      <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-      </style>
-    `;
-    document.body.appendChild(loader);
-    
-    // Connect and retrieve cloud data asynchronously
-    const url = `https://kvdb.io/9Yf3une7gVqwgYRu33cVnF/${roomId}`;
-    fetch(url)
-      .then(response => {
-        if (!response.ok) throw new Error('Shared room not found');
-        return response.json();
-      })
-      .then(cloudTrip => {
-        if (cloudTrip && cloudTrip.id) {
-          // Merge or add to our local trips
-          const existingIndex = trips.findIndex(t => t.id === cloudTrip.id);
-          if (existingIndex !== -1) {
-            trips[existingIndex] = cloudTrip;
-          } else {
-            trips.push(cloudTrip);
-          }
-          activeTripId = cloudTrip.id;
-          saveData();
-          
-          // Clear query params so refresh doesn't trigger loading screen again
-          window.history.replaceState({}, document.title, window.location.pathname);
-          
-          loader.remove();
-          
-          switchView('dashboard');
-          renderApp();
-          startCloudSyncPolling();
-          showToast('✈️ 成功加入共同記帳群組！');
-        } else {
-          throw new Error('Invalid trip data structure');
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        loader.innerHTML = `
-          <div style="font-size: 48px; margin-bottom: 24px;">⚠️</div>
-          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #ff4d4f;">連線共同記帳本失敗</h3>
-          <p style="font-size: 13px; color: #8c8c9e; max-width: 280px; text-align: center; margin-bottom: 24px;">找不到該記帳房號，或者網路連線中斷。請確認分享連結是否正確。</p>
-          <button class="btn-primary" onclick="window.location.replace(window.location.pathname)" style="background-color: rgba(255,255,255,0.05); color: #8c8c9e; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; padding: 10px 20px; border-radius: 12px; cursor: pointer;">返回我的記帳本</button>
-        `;
-      });
-      
-    return true;
-  }
-  
-  return false;
-}
-
-function shareActiveTripToLINE() {
-  const trip = getActiveTrip();
-  if (!trip || !trip.cloudRoomId) return;
-  
-  const shareUrl = window.location.origin + window.location.pathname + '?room=' + trip.cloudRoomId;
-  const shareText = `我建立了一個出國記帳本「${trip.name}」，邀請你加入共同記帳，旅伴即時拆帳超方便！\n點擊下方連結即可加入：\n${shareUrl}`;
-  
-  if (navigator.share) {
-    navigator.share({
-      title: '出國記帳旅伴分享',
-      text: shareText,
-      url: shareUrl
-    }).catch(err => {
-      console.log('Native sharing cancelled/failed:', err);
-      // Fallback
-      const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
-      window.open(lineUrl, '_blank');
-    });
-  } else {
-    // Fallback to direct LINE sharing
-    const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
-    window.open(lineUrl, '_blank');
-  }
-}
