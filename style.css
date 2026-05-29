@@ -414,8 +414,8 @@ header h1 {
   stroke: url(#progress-gradient);
   stroke-width: 8;
   stroke-linecap: round;
-  stroke-dasharray: 226; /* 2 * PI * r (where r = 36) => 226.19 */
-  stroke-dashoffset: 226;
+  stroke-dasharray: 213; /* 2 * PI * r (where r = 34) => 213.63 */
+  stroke-dashoffset: 213;
   transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2925,6 +2925,455 @@ input:checked + .slider:before {
   }
 }
 
+/* ================================================= */
+/* v5.0 Optimization: New Feature Styles             */
+/* ================================================= */
 
+/* Quick Action Shortcuts Row on Dashboard */
+.quick-actions-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
 
+.quick-action-btn {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-main);
+  font-size: 10px;
+  font-weight: 500;
+}
 
+.quick-action-btn:active {
+  transform: scale(0.95);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.quick-action-btn .qa-icon {
+  font-size: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.quick-action-btn .qa-label {
+  color: var(--text-muted);
+}
+
+/* Today Spending Summary Card */
+.today-summary-card {
+  background: linear-gradient(145deg, #161628 0%, #0e0e18 100%);
+  border: 1px solid rgba(54, 207, 201, 0.12);
+  box-shadow: 0 4px 15px rgba(54, 207, 201, 0.05);
+}
+
+.today-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.today-stat-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.today-stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.today-stat-value {
+  font-family: var(--font-title);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.today-stat-value.accent {
+  color: var(--accent);
+}
+
+.today-stat-value.warning {
+  color: var(--secondary);
+}
+
+/* Mini Daily Spending Spark Chart */
+.spark-chart-container {
+  margin-top: 14px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--border-color);
+}
+
+.spark-chart-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spark-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 60px;
+}
+
+.spark-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.spark-bar {
+  width: 100%;
+  max-width: 20px;
+  min-height: 2px;
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, var(--primary) 0%, rgba(255, 122, 69, 0.4) 100%);
+  transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.spark-bar.today {
+  background: linear-gradient(180deg, var(--accent) 0%, rgba(54, 207, 201, 0.4) 100%);
+  box-shadow: 0 0 8px rgba(54, 207, 201, 0.3);
+}
+
+.spark-bar-label {
+  font-size: 8px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Ledger Date Group Headers */
+.ledger-date-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  margin-top: 14px;
+  padding: 0 4px;
+}
+
+.ledger-date-group:first-child {
+  margin-top: 0;
+}
+
+.ledger-date-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.ledger-date-label {
+  font-family: var(--font-title);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.ledger-date-total {
+  font-size: 10px;
+  color: var(--primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Ledger Sort Dropdown */
+.ledger-sort-select {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: all 0.2s ease;
+}
+
+.ledger-sort-select:focus {
+  border-color: var(--primary);
+}
+
+/* Quick Amount Buttons in Drawer */
+.quick-amount-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.quick-amount-btn {
+  flex: 1;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--secondary);
+  font-family: var(--font-title);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.quick-amount-btn:active {
+  background-color: rgba(255, 192, 105, 0.15);
+  border-color: var(--secondary);
+  transform: scale(0.95);
+}
+
+/* Active Identity Glow Border */
+.split-companion-item.active-identity {
+  border-color: rgba(255, 122, 69, 0.3);
+  background-color: rgba(255, 122, 69, 0.03);
+}
+
+/* Settle debt button style */
+.btn-settle-debt {
+  background: rgba(54, 207, 201, 0.1);
+  border: 1px solid rgba(54, 207, 201, 0.3);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-settle-debt:active {
+  background: rgba(54, 207, 201, 0.2);
+  transform: scale(0.95);
+}
+
+/* Location GPS button in drawer */
+.location-gps-btn {
+  background: rgba(54, 207, 201, 0.08);
+  border: 1px solid rgba(54, 207, 201, 0.2);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.location-gps-btn:active {
+  transform: scale(0.95);
+}
+
+/* Trip delete button in settings */
+.btn-delete-trip-direct {
+  background: rgba(255, 77, 79, 0.08);
+  border: 1px solid rgba(255, 77, 79, 0.15);
+  border-radius: 10px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-trip-direct:active {
+  background: rgba(255, 77, 79, 0.2);
+  transform: scale(0.9);
+}
+
+/* Swipe delete container for settings trips */
+.swipe-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.swipe-content {
+  position: relative;
+  z-index: 2;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.swipe-action-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 100%;
+  background: var(--danger);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 0 18px 18px 0;
+  z-index: 1;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+/* Ledger Swipe Container */
+.ledger-swipe-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.ledger-swipe-content {
+  position: relative;
+  z-index: 2;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ledger-swipe-content:active {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.ledger-swipe-action-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 100%;
+  background: var(--danger);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 0 18px 18px 0;
+  z-index: 1;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.ledger-swipe-action-delete svg {
+  width: 18px;
+  height: 18px;
+  stroke: white;
+  fill: none;
+}
+
+/* Segmented Payment Bar */
+.segmented-bar-container {
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  display: flex;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.03);
+  margin-top: 10px;
+}
+
+.segmented-bar-segment {
+  height: 100%;
+  transition: width 0.5s ease;
+}
+
+.segmented-bar-segment.cash {
+  background: linear-gradient(90deg, var(--secondary), #ffd666);
+}
+
+.segmented-bar-segment.card {
+  background: linear-gradient(90deg, var(--accent), #1890ff);
+}
+
+.segmented-bar-segment.split {
+  background: linear-gradient(90deg, #b37feb, #9254de);
+}
+
+/* Wallet Water Level Bar */
+.wallet-water-wrapper {
+  margin-top: 6px;
+}
+
+.wallet-water-track {
+  width: 100%;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.wallet-water-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, #1890ff 100%);
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wallet-water-fill.warning {
+  background: linear-gradient(90deg, #faad14 0%, #ffc53d 100%);
+}
+
+.wallet-water-fill.danger {
+  background: linear-gradient(90deg, var(--danger) 0%, #ff7875 100%);
+  animation: pulseDanger 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseDanger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}

@@ -394,6 +394,26 @@ function renderDashboard() {
 
   // Render dynamic dashboard HTML
   const dashHtml = `
+    <!-- Quick Action Shortcut Buttons -->
+    <div class="quick-actions-row">
+      <div class="quick-action-btn" onclick="showAddExpenseDrawer()">
+        <span class="qa-icon">✏️</span>
+        <span class="qa-label">快速記帳</span>
+      </div>
+      <div class="quick-action-btn" onclick="showCashWithdrawalDrawer()">
+        <span class="qa-icon">💸</span>
+        <span class="qa-label">提領現金</span>
+      </div>
+      <div class="quick-action-btn" onclick="switchView('ledger')">
+        <span class="qa-icon">📋</span>
+        <span class="qa-label">查看帳本</span>
+      </div>
+      <div class="quick-action-btn" onclick="switchView('split-bill')">
+        <span class="qa-icon">👥</span>
+        <span class="qa-label">旅伴拆帳</span>
+      </div>
+    </div>
+
     <!-- Trip Budget Overview Card -->
     <div class="card trip-summary-card">
       <div class="card-title">
@@ -422,7 +442,7 @@ function renderDashboard() {
               </linearGradient>
             </defs>
             <circle class="circular-bg" cx="40" cy="40" r="34"></circle>
-            <circle class="circular-bar" cx="40" cy="40" r="34" style="stroke-dashoffset: ${213 - (213 * percentUsed / 100)}"></circle>
+            <circle class="circular-bar" cx="40" cy="40" r="34" style="stroke-dashoffset: ${214 - (214 * percentUsed / 100)}"></circle>
           </svg>
           <div class="circular-text">
             ${percentUsed}%
@@ -474,6 +494,79 @@ function renderDashboard() {
           平攤限額 NT$ ${dailyBudgetLimitBase.toLocaleString()}/天 · 今日已花 NT$ ${spentTodayBase.toLocaleString()}
         </div>
       </div>
+    </div>
+
+    <!-- Today Spending Summary Card -->
+    <div class="card today-summary-card">
+      <div class="card-title" style="color: var(--accent);">📊 今日花費摘要</div>
+      <div class="today-stats-grid">
+        <div class="today-stat-item">
+          <div class="today-stat-label">💰 今日已花費</div>
+          <div class="today-stat-value accent">NT$ ${spentTodayBase.toLocaleString()}</div>
+        </div>
+        <div class="today-stat-item">
+          <div class="today-stat-label">🎯 今日剩餘額度</div>
+          <div class="today-stat-value ${dailyAllowanceBase <= 0 ? 'danger' : 'warning'}">NT$ ${dailyAllowanceBase.toLocaleString()}</div>
+        </div>
+      </div>
+      ${(() => {
+        // 今日花費類別分布
+        const todayCats = {};
+        trip.transactions.forEach(t => {
+          const txDate = parseLocalDate(t.date);
+          txDate.setHours(0, 0, 0, 0);
+          if (txDate.getTime() === today.getTime()) {
+            const catKey = t.category || 'others';
+            const cat = CATEGORIES[catKey] || CATEGORIES.others;
+            if (!todayCats[catKey]) todayCats[catKey] = { name: cat.name, icon: cat.icon, total: 0 };
+            todayCats[catKey].total += t.amountBase;
+          }
+        });
+        const todayCatList = Object.values(todayCats).sort((a, b) => b.total - a.total);
+        if (todayCatList.length === 0) {
+          return '<div style="text-align: center; padding: 10px; font-size: 12px; color: var(--text-muted); margin-top: 8px;">今天還沒有任何消費記錄 🎉</div>';
+        }
+        return '<div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;">' +
+          todayCatList.map(c => 
+            '<span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 4px 10px; font-size: 11px;">' +
+            c.icon + ' ' + c.name + ' <strong style="color: var(--accent); margin-left: 2px;">NT$' + c.total.toLocaleString() + '</strong></span>'
+          ).join('') + '</div>';
+      })()}
+
+      <!-- Daily Spending Spark Chart (最近7天) -->
+      ${(() => {
+        const days = [];
+        for (let d = 6; d >= 0; d--) {
+          const dayDate = new Date(today);
+          dayDate.setDate(today.getDate() - d);
+          dayDate.setHours(0, 0, 0, 0);
+          let dayTotal = 0;
+          trip.transactions.forEach(t => {
+            const txDate = parseLocalDate(t.date);
+            txDate.setHours(0, 0, 0, 0);
+            if (txDate.getTime() === dayDate.getTime()) {
+              dayTotal += t.amountBase;
+            }
+          });
+          const month = dayDate.getMonth() + 1;
+          const day = dayDate.getDate();
+          const isToday = dayDate.getTime() === today.getTime();
+          days.push({ label: month + '/' + day, total: dayTotal, isToday });
+        }
+        const maxVal = Math.max(...days.map(d => d.total), 1);
+        return '<div class="spark-chart-container">' +
+          '<div class="spark-chart-title"><span>📈 最近 7 日消費趨勢</span><span style="font-size: 10px; color: var(--accent);">(NT$)</span></div>' +
+          '<div class="spark-chart-bars">' +
+          days.map(d => {
+            const pct = Math.max(3, Math.round((d.total / maxVal) * 100));
+            return '<div class="spark-bar-col">' +
+              (d.total > 0 ? '<div style="font-size: 8px; color: var(--text-muted); margin-bottom: 2px;">' + d.total.toLocaleString() + '</div>' : '') +
+              '<div class="spark-bar ' + (d.isToday ? 'today' : '') + '" style="height: ' + pct + '%;"></div>' +
+              '<div class="spark-bar-label">' + d.label + (d.isToday ? ' 🔸' : '') + '</div>' +
+            '</div>';
+          }).join('') +
+          '</div></div>';
+      })()}
     </div>
 
     <!-- Category Spent Chart Card (Clickable to view details) -->
@@ -554,6 +647,13 @@ function clearCategoryFilter() {
 }
 
 // Render 2: Ledger View
+let ledgerSortMode = 'date-desc';
+
+function setLedgerSort(mode) {
+  ledgerSortMode = mode;
+  renderLedger();
+}
+
 function renderLedger() {
   const trip = getActiveTrip();
   const ledgerContainer = document.getElementById('view-ledger');
@@ -577,18 +677,54 @@ function renderLedger() {
     return descMatch || catMatch || methodMatch;
   });
 
-  // Sort transaction dates desc
-  const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
+  // Sort transactions based on sort mode
+  let sorted;
+  switch (ledgerSortMode) {
+    case 'date-asc':
+      sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
+      break;
+    case 'amount-desc':
+      sorted = [...filtered].sort((a, b) => b.amountForeign - a.amountForeign);
+      break;
+    case 'amount-asc':
+      sorted = [...filtered].sort((a, b) => a.amountForeign - b.amountForeign);
+      break;
+    case 'category':
+      sorted = [...filtered].sort((a, b) => {
+        const catA = (CATEGORIES[a.category]?.name || 'zzz');
+        const catB = (CATEGORIES[b.category]?.name || 'zzz');
+        return catA.localeCompare(catB) || new Date(b.date) - new Date(a.date);
+      });
+      break;
+    default: // date-desc
+      sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  // Calculate total for filtered results
+  const filteredTotal = filtered.reduce((acc, t) => acc + t.amountBase, 0);
 
   let html = `
     <div class="ledger-header">
       <h2 class="ledger-title">消費明細 (${sorted.length}筆)</h2>
+      <select class="ledger-sort-select" onchange="setLedgerSort(this.value)" id="ledger-sort-sel">
+        <option value="date-desc" ${ledgerSortMode === 'date-desc' ? 'selected' : ''}>📅 最新優先</option>
+        <option value="date-asc" ${ledgerSortMode === 'date-asc' ? 'selected' : ''}>📅 最早優先</option>
+        <option value="amount-desc" ${ledgerSortMode === 'amount-desc' ? 'selected' : ''}>💰 金額高→低</option>
+        <option value="amount-asc" ${ledgerSortMode === 'amount-asc' ? 'selected' : ''}>💰 金額低→高</option>
+        <option value="category" ${ledgerSortMode === 'category' ? 'selected' : ''}>🏷️ 按類別分組</option>
+      </select>
     </div>
     
     <div class="search-input-wrapper">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="ledger-search-input" class="search-input" placeholder="搜尋備註、分類或支付方式..." value="${query}" oninput="renderLedger()">
     </div>
+
+    ${filtered.length > 0 ? `
+      <div style="text-align: right; font-size: 11px; color: var(--text-muted); margin-bottom: 10px; padding-right: 4px;">
+        篩選總計：<strong style="color: var(--accent);">NT$ ${filteredTotal.toLocaleString()}</strong>
+      </div>
+    ` : ''}
   `;
 
   if (activeCategoryFilter && CATEGORIES[activeCategoryFilter]) {
@@ -613,6 +749,10 @@ function renderLedger() {
     `;
   } else {
     html += `<div class="ledger-list">`;
+    
+    // Group by date for date header display
+    let lastDateKey = '';
+    
     sorted.forEach(t => {
       const cat = CATEGORIES[t.category] || CATEGORIES.others;
       let payMethodStr = '現金';
@@ -623,6 +763,32 @@ function renderLedger() {
       } else if (t.paymentMethod === 'split') {
         payMethodStr = '多人拆帳';
         payClass = 'split';
+      }
+
+      // Date group header (only for date sort modes)
+      if (ledgerSortMode === 'date-desc' || ledgerSortMode === 'date-asc') {
+        const txDateObj = parseLocalDate(t.date);
+        const dateKey = `${txDateObj.getFullYear()}-${String(txDateObj.getMonth()+1).padStart(2,'0')}-${String(txDateObj.getDate()).padStart(2,'0')}`;
+        if (dateKey !== lastDateKey) {
+          // Calculate daily subtotal
+          const dayTotal = sorted.filter(s => {
+            const sd = parseLocalDate(s.date);
+            return `${sd.getFullYear()}-${String(sd.getMonth()+1).padStart(2,'0')}-${String(sd.getDate()).padStart(2,'0')}` === dateKey;
+          }).reduce((acc, s) => acc + s.amountBase, 0);
+
+          const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+          const dayName = dayNames[txDateObj.getDay()];
+          
+          html += `
+            <div class="ledger-date-group">
+              <div class="ledger-date-line"></div>
+              <div class="ledger-date-label">📅 ${dateKey} (週${dayName})</div>
+              <div class="ledger-date-total">NT$ ${dayTotal.toLocaleString()}</div>
+              <div class="ledger-date-line"></div>
+            </div>
+          `;
+          lastDateKey = dateKey;
+        }
       }
 
       html += `
@@ -929,8 +1095,8 @@ function renderSettings() {
   // App Footer / Version
   html += `
     <div style="text-align: center; margin-top: 30px; margin-bottom: 15px; color: var(--text-muted); font-size: 11px;">
-      <p>✈️ 出國記帳 PWA 離線工具 v4.0</p>
-      <p style="margin-top: 5px; opacity: 0.6;">極致精簡 · 離線優先 · 智能平攤</p>
+      <p>✈️ 出國記帳 PWA 離線工具 v5.0</p>
+      <p style="margin-top: 5px; opacity: 0.6;">極致精簡 · 離線優先 · 智能平攤 · 全面優化</p>
     </div>
   `;
 
@@ -1391,6 +1557,19 @@ function keypadTap(val) {
     document.getElementById('drawer-amt-foreign').value = keypadBuffer; 
   }
   
+  updateDrawerEquivalentText();
+}
+
+// Quick amount add shortcut buttons
+function quickAddAmount(amount) {
+  playClickSound();
+  if (navigator.vibrate) navigator.vibrate(12);
+  
+  const currentVal = parseFloat(keypadBuffer) || 0;
+  const newVal = currentVal + amount;
+  keypadBuffer = newVal.toString();
+  
+  document.getElementById('drawer-amt-foreign').value = keypadBuffer;
   updateDrawerEquivalentText();
 }
 
@@ -2310,9 +2489,7 @@ async function editExchangeRate() {
   );
   if (isConfirmed) {
     trip.transactions.forEach(t => {
-      if (t.paymentMethod !== 'split') { // Standard single payments
-        t.amountBase = Math.round(t.amountForeign * rate);
-      }
+      t.amountBase = Math.round(t.amountForeign * rate);
     });
   }
 
@@ -3254,6 +3431,11 @@ function setupEventListeners() {
       // 1. 機械式音效（所有裝置通用）
       playClickSound();
 
+      // 2. 觸覺震動回饋（支援的裝置）
+      if (navigator.vibrate) {
+        navigator.vibrate(8);
+      }
+
       // 3. 按鍵輸入處理
       if (val === 'save') {
         saveTransaction();
@@ -3448,7 +3630,7 @@ function renderMap() {
           <div style="font-size: 50px; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 122, 69, 0.4)); animation: pulse 2s infinite;">🗺️</div>
           <h3 style="font-family: var(--font-title); font-size: 18px; color: var(--secondary); margin-bottom: 8px;">未有地圖軌跡數據</h3>
           <p style="margin-bottom: 24px; font-size: 13px; color: var(--text-muted); line-height: 1.5; max-width: 320px;">
-            本旅程尚未記錄 any 包含經緯度座標的交易花費！<br><br>
+            本旅程尚未記錄任何包含經緯度座標的交易花費！<br><br>
             您可以在記帳時點擊 <b>「🎯 自動定位」</b> 獲取當前 GPS 位置，或是點擊下方按鈕一鍵為您現有的交易<b>注入逼真的東京知名地標軌跡</b>，立即體驗地圖魅力！
           </p>
           <button class="btn-primary" onclick="injectDemoCoordinates()" style="background: linear-gradient(135deg, var(--primary) 0%, #ff4d4f 100%); border: none; font-weight: bold; border-radius: 14px; padding: 12px 24px; width: 100%; max-width: 280px; box-shadow: 0 4px 15px rgba(255, 122, 69, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">

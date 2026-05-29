@@ -132,6 +132,13 @@
         <!-- Phone-optimised Custom Tactile Keypad -->
         <div class="form-group">
           <label class="form-label">專屬數字鍵盤 (防原生遮擋)</label>
+          <!-- Quick Amount Shortcut Buttons -->
+          <div class="quick-amount-row">
+            <button class="quick-amount-btn" onclick="quickAddAmount(100)">+100</button>
+            <button class="quick-amount-btn" onclick="quickAddAmount(500)">+500</button>
+            <button class="quick-amount-btn" onclick="quickAddAmount(1000)">+1000</button>
+            <button class="quick-amount-btn" onclick="quickAddAmount(5000)">+5000</button>
+          </div>
           <div class="keypad-container">
             <button class="keypad-btn" data-val="1">1</button>
             <button class="keypad-btn" data-val="2">2</button>
